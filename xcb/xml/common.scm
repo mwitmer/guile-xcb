@@ -31,16 +31,6 @@
 
 (define-once documentation (make-hash-table))
 
-(define (unsigned-bit-length-predicate bits)
-  (lambda (n)
-   (and (integer? n) 
-	(>= n 0)
-	(and  (<= (integer-length n) bits)))))
-
-(define-public (card8? n) (unsigned-bit-length-predicate 8))
-(define-public (card16? n) (unsigned-bit-length-predicate 16))
-(define-public (card32? n) (unsigned-bit-length-predicate 32))
-
 (define (hash-force-nested-set! h keys value)
   (if (= (length keys) 1)
       (if (hash-ref h (car keys) #f) 
@@ -106,21 +96,21 @@
     (and-let* ((brief (assq-ref documentation 'brief)))
 	(format #t "\nBrief: ~a\n\n" brief)))
 
-(define-public (document-brief type path)
-  (document type path print-documentation-brief))
+(define-public (document-brief package type . path)
+  (document package type print-documentation-brief path))
 
-(define-public (document-full type path)
-  (document type path print-documentation))
+(define-public (document-full package type . path)
+  (document package type print-documentation path))
 
-(define (document type path proc)
+(define (document package type proc path)
   (let ((my-documentation
 	 (hash-nested-ref
 	  documentation
-	  (if (list? path) 
-	      (cons type path)
-	      (list type path)))))
+	  (cons package (cons type path)))))
     (if my-documentation
-	(proc my-documentation)
+	(if (hash-table? my-documentation)
+	    my-documentation
+	    (proc my-documentation))
 	(format #t "No documentation found for ~a in type ~a\n" path type))))
 
 (define-public (parse-dec-or-hex-integer value)

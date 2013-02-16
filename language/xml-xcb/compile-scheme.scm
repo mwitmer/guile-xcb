@@ -259,11 +259,10 @@
 			     '(doc 0 1))
        (make-element-syntax
 	'item
-	`(,(string->symbol name) 
-	  ((value 
-	    ,(if (= (length expression) 1) 
-		 `(,'unquote ,(element-syntax-syntax (car expression)))
-		 (string->symbol name)))))
+	(cons (string->symbol name) 
+	      (if (null? expression)
+		  #f
+		  (element-syntax-syntax (car expression))))
 	`(,name ,doc))))
     (,otherwise (xml-xcb-parse-error exp ignore-errors?))))
 
@@ -375,16 +374,27 @@
 			     '(list 0 #f))
        (make-element-syntax 'error #f #f)))
     ((import ,import) (guard (string? import)) 
-     (make-element-syntax 'import #f #f))
+     (make-element-syntax 'import `(xcb xml ext ,(string->symbol import)) #f))
     ((xidtype (@ (name ,name))) (guard (string? name)) 
-     (make-element-syntax 'xidtype #f #f))
+     (make-element-syntax 
+      'xidtype `(define-public 
+		  ,(string->symbol name) 
+		  (self-type (quote ,(string->symbol name)) 
+			     (pack-uint-proc 4) (unpack-uint-proc 4) #t)) #f))
     ((xidunion (@ (name ,name))
 	       (type ,types) ...)
      (guard
       (string? name)
       (>= (length types) 1)
       (every string? types))
-     (make-element-syntax 'xidunion #f #f))
+     (make-element-syntax 
+      'xidunion 
+      `(define-public 
+	 ,(string->symbol name) 
+	 (self-union-type 
+	  (quote ,(string->symbol name))
+	  (list ,@(map (lambda (type) (string->symbol type)) types))
+	  (pack-uint-proc 4) (unpack-uint-proc 4) #t)) #f))
     ((enum (@ (name ,name))
 	   ,[(combine-matchers
 	      item-match
@@ -397,21 +407,38 @@
 			     '(doc 0 1))
        (make-element-syntax 
 	'enum
-	`(define-public 
-	   ,(string->symbol name) 
-	   (,'quasiquote (,@(map 
-			     (lambda (item) 
-			       (element-syntax-syntax item)) items))))
+	`(begin
+	   (define-public 
+	     ,(string->symbol name)
+	     (make-hash-table))
+	   ,@(let item-creator ((items items) (next-value 0))
+	       (if (not (null? items))
+		   (let* ((item-syntax (element-syntax-syntax (car items)))
+			  (provided-value (cdr item-syntax)))
+		     (cons
+		      `(hashq-set! ,(string->symbol name)
+				   (quote ,(car item-syntax))
+				   ,(if provided-value `(,provided-value #f) next-value))
+		      (if provided-value
+			  (item-creator (cdr items) next-value)
+			  (item-creator (cdr items) (1+ next-value)))))
+		   '())))
 	(if (= (length doc) 1)
 	    `(register-documentation xcbdoc
-	      'event ,name 
+	      'enum ,name 
 	      ,(element-syntax-documentation-syntax (car doc)))
 	    #f))))
     ((typedef (@ (oldname ,oldname)
 		 (newname ,newname)))
      (guard (string? oldname)
 	    (string? newname))
-     newname)
+     (make-element-syntax 
+      'typedef
+      `(define-public ,(string->symbol newname) 
+	 (clone-xcb-type 
+	  (quote ,(string->symbol newname)) 
+	  ,(string->symbol oldname)))
+      #f))
     ((struct (@ (name ,name))
 	     ,[(combine-matchers 
 		fields-match 
@@ -453,35 +480,39 @@
       (find (lambda (el) (equal? el op)) '("+" "-" "/" "*" "&" "<<")))
      (make-element-syntax
       'expression
-      `(,(proc-for-op op) ,expression1 ,expression2)
+      `(lambda (field-ref) (,(proc-for-op op) (,expression1 field-ref) (,expression2 field-ref)))
       #f))
     ((unop (@ (op ,op))
 	   ,[expression-match -> expression])
      (guard (equal? op "~"))
      (make-element-syntax
       'expression
-      `(,(proc-for-op op) ,expression)
+      `(lambda (field-ref) (,(proc-for-op op) (,expression field-ref)))
       #f))
-    ((fieldref ,fieldref) (guard (string? fieldref)) 
-     (make-element-syntax 'expression #f #f))
+    ((fieldref ,fieldref) (guard (string? fieldref))
+     (make-element-syntax 'expression `(lambda (field-ref) (field-ref ,fieldref)) #f))
     ((enumref (@ (ref ,ref)) ,enumref) (guard (string? enumref) (string? ref)) 
-     (make-element-syntax 'expression #f #f))
+     (make-element-syntax 'expression `(lambda (field-ref) (enum-ref ,ref ,enumref)) #f))
     ((sumof (@ (ref ,ref))) (guard (string? ref)) 
      (make-element-syntax
       'expression
-      `(fold
-	xcb-add
-	0
-	(map 
-	 (lambda (listel) (listel))
-	 (xcb-list-elements ,(string->symbol ref))))
+      `(lambda (field-ref) 
+	 (fold
+	  xcb-add
+	  0
+	  (map 
+	   (lambda (listel) (listel))
+	   (xcb-list-elements ,(string->symbol ref)))))
       #f))
     ((popcount ,[expression-match -> expression])
-     (make-element-syntax 'expression `(xcb-popcount ,expression) #f))
+     (make-element-syntax 
+      'expression 
+      `(lambda (field-ref) 
+	 (xcb-popcount (,expression field-ref))) #f))
     ((value ,value) (guard (dec-or-hex-integer? value)) 
-     (make-element-syntax 'expression `(parse-dec-or-hex-integer ,value) #f))
+     (make-element-syntax 'expression `(lambda (field-ref) (parse-dec-or-hex-integer ,value)) #f))
     ((bit ,bit) (guard (xml-integer? bit)) 
-     (make-element-syntax 'expression `(xcb-lsh 1 (string->number bit)) #f))
+     (make-element-syntax 'expression `(lambda (field-ref) (xcb-lsh 1 (string->number ,bit))) #f))
     (,otherwise (xml-xcb-parse-error exp ignore-errors?))))
 
 (define (doc-fields-match exp)
@@ -568,6 +599,7 @@
      (receive (enums 
 	       events
 	       requests
+	       errors
 	       eventcopies
 	       errorcopies
 	       structs
@@ -590,11 +622,21 @@
 			     '(typedef 0 #f)
 			     '(import 0 #f))
        `(begin
-	  (define-module (xcb xml ,(string->symbol header))
-	    #:use-module (xcb xml common))
+	  (define-module (xcb xml ext ,(string->symbol header))
+	    #:use-module (xcb xml type)
+	    #:use-module (xcb xml struct)
+	    #:use-module (xcb xml common)	    
+	    ,@(if (not (string= header "xproto")) '(#:use-module (xcb xml xproto)) '())
+	    ,@(map (lambda (import) `(#:use-module ,(element-syntax-syntax import))) imports))
+	  (load-extension "libguile_xcb_expression" "init_xcb_expressions")
 	  (define xcbdoc (make-hash-table))
-	  ,@(delete #f (map element-syntax-documentation-syntax requests))
-	  (register-xcb-documentation ,(string->symbol header) xcbdoc))))
+	  ,@(map element-syntax-syntax (append xidtypes xidunions typedefs))
+	  ,@(delete 
+	     #f 
+	     (map 
+	      element-syntax-documentation-syntax 
+	      (append requests events enums)))
+	  	  (register-xcb-documentation (quote ,(string->symbol header)) xcbdoc))))
     (,otherwise 
      (error "xml-xcb: invalid expression" 
 	    (with-output-to-string (lambda () (sxml->xml otherwise)))))))
