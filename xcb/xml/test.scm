@@ -150,10 +150,9 @@
 
 (let* ((port 
 	(open-bytevector-input-port #vu8(2 0 1 0 0 0 0 0 
-					   3 0 0 0 3 3 3 
-					   0 3 0 0 0 3 0 
-					   0 0 3 0 0 0 0
-					   0 0 0))))
+					 3 0 0 0 3 3 3 0 
+					 3 0 0 0 3 0 0 0 
+					 3 0 0 0 0 0 0 0))))
   (receive (size my-depth)
       (xcb-struct-unpack DEPTH 32 port)
     (test-eqv size 32)

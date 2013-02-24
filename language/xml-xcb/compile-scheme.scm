@@ -319,15 +319,11 @@
       ((false-or xml-boolean?) combine-adjacent))
      (receive (exprfields valueparams fields pads lists switches replies doc)
 	 (partition-elements request-fields
-			     '(exprfield 0 #f)
-			     '(field 0 #f)
-			     '(pad 0 #f)
-			     '(list 0 #f)
+			     '((field list pad exprfield) 0 #f)
 			     '(valueparam 0 #f)
 			     '(switch 0 1)
 			     '(reply 0 1)
 			     '(doc 0 1))
-
        (make-element-syntax 
 	'request #f 
 	(if (= (length doc) 1)

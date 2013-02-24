@@ -175,12 +175,11 @@
 
 (define (xcb-struct-constructor xcb-struct fields)  
   (let ((list-fields
-	 (delete 
-	  #f 
-	  (hash-map->list 
-	   (lambda (key value)
-	     (if (xcb-type-list? value) key #f))
-	   (types xcb-struct)))))
+	 (delete #f 
+		 (hash-map->list 
+		  (lambda (key value)
+		    (if (xcb-type-list? value) key #f))
+		  (types xcb-struct)))))
     (lambda args    
       (let ((rec 
 	     (apply 
@@ -237,68 +236,102 @@
 	  value
 	  (typed-value-value value)))))
 
+(define (xcb-struct-mask-value xcb-struct field-tag original arg t-or-f)
+  (with-bit-set
+   original
+   (apply 
+    logior
+    (map 
+     (lambda (arg) 
+       (xcb-enum-get 
+	(xcb-type-mask 
+	 (hashq-ref (types xcb-struct) field-tag)) arg))
+     (if (list? arg) arg (list arg))))
+   t-or-f))
+
+(define (xcb-struct-vector-mask-modify xcb-struct field-tag rec n arg t-or-f)
+  (vector-set! 
+   ((xcb-struct-accessor xcb-struct field-tag) rec) n
+   (make-typed-value
+    (xcb-struct-mask-value 
+     xcb-struct
+     field-tag
+     ((xcb-struct-vector-accessor xcb-struct field-tag) rec n)
+     arg
+     t-or-f)
+    (hashq-ref (types xcb-struct) field-tag))))
+
+(define (xcb-maybe-get-from-enum xcb-type arg)
+  "Return either ARG or, if XCB-TYPE has an enum, a value from
+XCB-TYPE's enum with name ARG. If no enum value is found for ARG,
+return ARG if the enum is not required by the type, or throw an error
+if it is."
+  (if (xcb-type-enum xcb-type)
+      (or (xcb-enum-get (xcb-type-enum xcb-type) arg)
+	  (if (xcb-type-require-enum? xcb-type)
+	      (error "xcb-xml: No enum value with name " arg)
+	      arg))
+      arg))
+
+(define (xcb-struct-vector-nonmask-modify xcb-struct field-tag rec n arg)
+  (vector-set! 
+   ((xcb-struct-accessor xcb-struct field-tag) rec) n 
+   (if (typed-value? arg)
+       (typecheck arg)
+       (let* ((xcb-type (hashq-ref (types xcb-struct) field-tag)))
+	 (typecheck (make-typed-value 
+		     (xcb-maybe-get-from-enum xcb-type arg) 
+		     xcb-type))))))
+
 (define (xcb-struct-vector-modifier xcb-struct field-tag)
   (lambda* (rec n arg #:optional (t-or-f *unspecified*))
     (if (and (not (eq? t-or-f *unspecified*))
 	     (xcb-type-mask (hashq-ref (types xcb-struct) field-tag)))
-	(vector-set! ((xcb-struct-accessor xcb-struct field-tag) rec) n
-		     (make-typed-value
-		      (with-bit-set
-		       ((xcb-struct-vector-accessor xcb-struct field-tag) rec n)
-		       (apply logior
-			      (map
-			       (lambda (arg) 
-				 (xcb-enum-get 
-				  (xcb-type-mask (hashq-ref (types xcb-struct) field-tag)) arg))
-			       (if (list? arg) arg (list arg))))
-		       t-or-f)
-		      (hashq-ref (types xcb-struct) field-tag)))
-	(let ((val 
-	       (if (typed-value? arg)
-		   (typecheck arg)
-		   (let* ((xcb-type (hashq-ref (types xcb-struct) field-tag))
-			  (resolve-val 
-			   (if (xcb-type-enum xcb-type)
-			       (or (xcb-enum-get (xcb-type-enum xcb-type) arg)
-				   (if (xcb-type-require-enum? xcb-type)
-				       (error "xcb-xml: No enum value with name " arg)
-				       arg))
-			       arg)))
-		     (typecheck (make-typed-value resolve-val xcb-type))))))
-	  (vector-set! ((xcb-struct-accessor xcb-struct field-tag) rec) n val)))))
+	(xcb-struct-vector-mask-modify xcb-struct field-tag rec n arg t-or-f)
+	(xcb-struct-vector-nonmask-modify xcb-struct field-tag rec n arg))))
 
 (define (with-bit-set n bit val)
   (if val (logior n bit) (logand n (lognot bit))))
 
+(define (xcb-struct-mask-modify xcb-struct field-tag rec arg t-or-f)
+  ((record-modifier (underlying-record-type xcb-struct) field-tag) rec
+   (typecheck 
+    (make-typed-value
+     (xcb-struct-mask-value 
+      xcb-struct field-tag 
+      ((xcb-struct-accessor xcb-struct field-tag) rec) 
+      arg t-or-f)
+     (hashq-ref (types xcb-struct) field-tag)))))
+
+(define (xcb-struct-nonmask-modify xcb-struct field-tag rec arg)
+  ((record-modifier (underlying-record-type xcb-struct) field-tag) rec
+   (if (typed-value? arg)
+       (typecheck arg)
+       (let* ((xcb-type (hashq-ref (types xcb-struct) field-tag)))
+	 (typecheck (make-typed-value 
+		     (xcb-maybe-get-from-enum xcb-type arg) 
+		     xcb-type))))))
+
 (define (xcb-struct-modifier xcb-struct field-tag)
+  "Returns a lambda that modifies the value of field FIELD-TAG in an instance
+of XCB-STRUCT"
   (lambda* (rec arg #:optional (t-or-f *unspecified*))
     (if (and (not (eq? t-or-f *unspecified*)) 
 	     (xcb-type-mask (hashq-ref (types xcb-struct) field-tag)))
-	((record-modifier (underlying-record-type xcb-struct) field-tag) rec
-	 (typecheck (make-typed-value
-		     (with-bit-set
-		      ((xcb-struct-accessor xcb-struct field-tag) rec)
-		      (apply logior
-		       (map
-			(lambda (arg) 
-			  (xcb-enum-get 
-			   (xcb-type-mask (hashq-ref (types xcb-struct) field-tag)) arg))
-			(if (list? arg) arg (list arg))))
-		      t-or-f)
-		     (hashq-ref (types xcb-struct) field-tag))))
-	(let ((val 
-	       (if (typed-value? arg)
-		   (typecheck arg)
-		   (let* ((xcb-type (hashq-ref (types xcb-struct) field-tag))
-			  (resolve-val 
-			   (if (xcb-type-enum xcb-type)
-			       (or (xcb-enum-get (xcb-type-enum xcb-type) arg)
-				   (if (xcb-type-require-enum? xcb-type)
-				       (error "xcb-xml: No enum value with name " arg)
-				       arg))
-			       arg)))
-		     (typecheck (make-typed-value resolve-val xcb-type))))))
-	  ((record-modifier (underlying-record-type xcb-struct) field-tag) rec val)))))
+	(xcb-struct-mask-modify xcb-struct field-tag rec arg t-or-f)
+	(xcb-struct-nonmask-modify xcb-struct field-tag rec arg))))
+
+(define (check-xcb-list-length xcb-struct rec field-name value)
+  (and-let* ((list-length-expression 
+	      (hashq-ref (list-length-expressions xcb-struct) field-name)))
+   (let ((expected-length 
+	  (list-length-expression
+	   (xcb-struct-field-ref-proc xcb-struct rec))))
+     (if (not (= expected-length (vector-length value)))
+	 (error (format #f 
+			"xml-xcb: Wrong length list in struct. Length: ~a Expected:"
+			expected-length)
+		(vector-length value))))))
 
 (define (xcb-struct-pack xcb-struct rec port)
   (let ((write-pad-bytes
@@ -309,16 +342,23 @@
        (let ((field-name (car field))
 	     (field-type (cadr field)))
 	 (if (eq? field-name '*pad*) (write-pad-bytes field-type)
-	     (let ((value ((record-accessor (underlying-record-type xcb-struct) field-name) rec)))
+	     (let ((value ((record-accessor 
+			    (underlying-record-type xcb-struct) 
+			    field-name) rec)))
 	       (if (vector? value)
-		   (vector-for-each 
-		    (lambda (value) 
-		      (typed-value-pack value port)) value)
-		   (or (and-let* ((field-value-expression
-				   (hashq-ref (field-value-expressions xcb-struct) field-name)))
+		   (begin 
+		     (check-xcb-list-length xcb-struct rec field-name value)
+		     (vector-for-each
+		      (lambda (value) 
+			(typed-value-pack value port)) value))
+		   (or (and-let* 
+			   ((field-value-expression
+			     (hashq-ref (field-value-expressions xcb-struct)
+					field-name)))
 			 (typed-value-pack
 			  (make-typed-value
-			   (field-value-expression (xcb-struct-field-ref-proc xcb-struct rec))
+			   (field-value-expression 
+			    (xcb-struct-field-ref-proc xcb-struct rec))
 			   field-type)
 			  port))
 		       (typed-value-pack value port)))))))
@@ -402,7 +442,8 @@
   (switches xcb-case-expression-switches))
 
 (define (xcb-switch-unpack switch xcb-struct rec port)
-  (let ((bitmask ((xcb-switch-expression switch) (xcb-struct-field-ref-proc xcb-struct rec))))
+  (let ((bitmask ((xcb-switch-expression switch) 
+		  (xcb-struct-field-ref-proc xcb-struct rec))))
     (if (every not (map xcb-case-expression-unpack (xcb-switch-case-expressions switch)))
 	(typed-value-unpack
 	 (cdr xcb-switch-default)
