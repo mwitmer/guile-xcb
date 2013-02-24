@@ -2,6 +2,8 @@
   #:use-module (ice-9 regex)
   #:use-module (ice-9 receive)
   #:use-module (srfi srfi-1)
+  #:use-module (xcb xml struct)
+  #:use-module (xcb xml type)
   #:use-module (sxml simple)
   #:use-module (sxml match))
 
@@ -98,7 +100,11 @@
 	       (receive (matches rest) 
 		   (partition 
 		    (lambda (element)
-		      (eq? (element-syntax-tag element) (caar inner-groups))) 
+		      (let ((syntax-tag-names (caar inner-groups)))
+			(if (list? syntax-tag-names)
+			    (find (lambda (el) (eq? el (element-syntax-tag element)))
+				  syntax-tag-names)
+			    (eq? (element-syntax-tag element) syntax-tag-names)))) 
 		    inner-elements)
 		 (if (and (cadar inner-groups)
 			  (< (length matches) (cadar inner-groups)))
@@ -189,7 +195,13 @@
       ((false-or string?) enum)
       ((false-or string?) altenum)
       ((false-or string?) mask))
-     (make-element-syntax 'field #f #f))
+     (make-element-syntax 'field `(,(string->symbol name) 
+				   (resolve-type ,(string->symbol type) 
+						 ,(if mask (string->symbol mask) #f) 
+						 ,(cond (enum (string->symbol enum))
+							(altenum (string->symbol altenum))
+							(else #f))
+						 ,(if enum #t #f))) #f))
     (,otherwise (xml-xcb-parse-error exp ignore-error?))))
 
 (define* (pad-match exp #:optional ignore-error?)
@@ -197,7 +209,7 @@
     ((pad (@ (bytes ,bytes)))
      (guard
       (xml-integer? bytes))
-     (make-element-syntax 'pad #f #f))
+     (make-element-syntax 'pad `(*pad* ,(string->number bytes)) #f))
     (,otherwise (xml-xcb-parse-error exp ignore-error?))))
 
 (define* (list-match exp #:optional ignore-error?)
@@ -214,7 +226,17 @@
       ((false-or string?) enum)
       ((false-or string?) altenum)
       ((false-or string?) mask))
-     (make-element-syntax 'list #f #f))
+     (make-element-syntax 'list `(,(string->symbol name)
+				  (resolve-type ,(string->symbol type) 
+						 ,(if mask (string->symbol mask) #f) 
+						 ,(cond (enum (string->symbol enum))
+							(altenum (string->symbol altenum))
+							(else #f))
+						 ,(if enum #t #f))
+				  *list*
+				  ,(if (= (length expression) 1)
+				       (element-syntax-syntax (car expression))
+				       #f)) #f))
     (,otherwise (xml-xcb-parse-error exp ignore-error?))))
 
 (define* (fields-match exp #:optional ignore-errors?)
@@ -380,7 +402,7 @@
       'xidtype `(define-public 
 		  ,(string->symbol name) 
 		  (self-type (quote ,(string->symbol name)) 
-			     (pack-uint-proc 4) (unpack-uint-proc 4) #t)) #f))
+			     (pack-int-proc 4) (unpack-int-proc 4) #t)) #f))
     ((xidunion (@ (name ,name))
 	       (type ,types) ...)
      (guard
@@ -394,7 +416,7 @@
 	 (self-union-type 
 	  (quote ,(string->symbol name))
 	  (list ,@(map (lambda (type) (string->symbol type)) types))
-	  (pack-uint-proc 4) (unpack-uint-proc 4) #t)) #f))
+	  (pack-int-proc 4) (unpack-int-proc 4) #t)) #f))
     ((enum (@ (name ,name))
 	   ,[(combine-matchers
 	      item-match
@@ -410,15 +432,15 @@
 	`(begin
 	   (define-public 
 	     ,(string->symbol name)
-	     (make-hash-table))
+	     (make-xcb-enum))
 	   ,@(let item-creator ((items items) (next-value 0))
 	       (if (not (null? items))
 		   (let* ((item-syntax (element-syntax-syntax (car items)))
 			  (provided-value (cdr item-syntax)))
 		     (cons
-		      `(hashq-set! ,(string->symbol name)
-				   (quote ,(car item-syntax))
-				   ,(if provided-value `(,provided-value #f) next-value))
+		      `(xcb-enum-set! ,(string->symbol name)
+				      (quote ,(car item-syntax))
+				      ,(if provided-value `(,provided-value #f) next-value))
 		      (if provided-value
 			  (item-creator (cdr items) next-value)
 			  (item-creator (cdr items) (1+ next-value)))))
@@ -445,15 +467,44 @@
 		switch-match) -> fields] ...)
      (guard
       (string? name))
-     (receive (fields pads lists switches)
+     (receive (fields switches)
 	 (partition-elements fields
-			     '(field 0 #f)
-			     '(list 0 #f)
-			     '(pad 0 #f)
+			     '((field list pad) 0 #f)
 			     '(switch 0 1))
-       (if (= (length (append fields lists pads)) 0)
+       (if (= (length fields) 0)
 	   (error "xml-xcb: struct must contain at least one fields element"))
-       (make-element-syntax 'struct #f #f)))
+       (let ((name-sym (string->symbol name)))
+	(make-element-syntax 
+	 'struct 
+	 `(define-xcb-struct 
+	    ,name-sym
+	    (,(symbol-append 'make- name-sym) 
+	     ,@(delete
+	      '*pad*
+	      (map 
+	       (lambda (field) 
+		 (car (element-syntax-syntax field)))
+	       (filter
+		(lambda (field)
+		  (not (eq? (element-syntax-tag field) 'list)))
+		fields))))
+	    ,(symbol-append name-sym '?)
+	    ,(symbol-append name-sym '-type)
+	    ,(if (not (null? switches)) 
+		 (element-syntax-syntax (car switches)) 
+		 #f)
+	    ,@(map 
+	       (lambda (field) 
+		 (let* ((syn (element-syntax-syntax field))
+			(field-name (car syn)))
+		   (if (eq? field-name '*pad*)
+		       syn
+		       (append 
+			syn 
+			(list
+			 (symbol-append name-sym '-get- field-name)
+			 (symbol-append name-sym '-set- field-name '!))))))
+	       fields)) #f))))
     ((union (@ (name ,name))
 	    ,[(combine-matchers
 	       switch-match
@@ -490,9 +541,13 @@
       `(lambda (field-ref) (,(proc-for-op op) (,expression field-ref)))
       #f))
     ((fieldref ,fieldref) (guard (string? fieldref))
-     (make-element-syntax 'expression `(lambda (field-ref) (field-ref ,fieldref)) #f))
+     (make-element-syntax 'expression `(lambda (field-ref) (field-ref 
+							    ',(string->symbol fieldref))) #f))
+;;,(string->symbol fieldref)
     ((enumref (@ (ref ,ref)) ,enumref) (guard (string? enumref) (string? ref)) 
-     (make-element-syntax 'expression `(lambda (field-ref) (enum-ref ,ref ,enumref)) #f))
+     (make-element-syntax 'expression `(lambda (field-ref) (enum-ref 
+							    ,(string->symbol ref) 
+							    ,(string->symbol enumref))) #f))
     ((sumof (@ (ref ,ref))) (guard (string? ref)) 
      (make-element-syntax
       'expression
@@ -622,15 +677,12 @@
 			     '(typedef 0 #f)
 			     '(import 0 #f))
        `(begin
-	  (define-module (xcb xml ext ,(string->symbol header))
-	    #:use-module (xcb xml type)
-	    #:use-module (xcb xml struct)
-	    #:use-module (xcb xml common)	    
-	    ,@(if (not (string= header "xproto")) '(#:use-module (xcb xml xproto)) '())
-	    ,@(map (lambda (import) `(#:use-module ,(element-syntax-syntax import))) imports))
+	  (use-modules
+	   ,@(if (not (string= header "xproto")) '((xcb xml xproto)) '())
+	   ,@(map (lambda (import) (element-syntax-syntax import)) imports))
 	  (load-extension "libguile_xcb_expression" "init_xcb_expressions")
 	  (define xcbdoc (make-hash-table))
-	  ,@(map element-syntax-syntax (append xidtypes xidunions typedefs))
+	  ,@(map element-syntax-syntax (append xidtypes xidunions typedefs enums structs))
 	  ,@(delete 
 	     #f 
 	     (map 

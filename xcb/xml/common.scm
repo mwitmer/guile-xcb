@@ -2,32 +2,10 @@
   #:use-module (srfi srfi-2)
   #:use-module (srfi srfi-9)
   #:use-module (srfi srfi-9 gnu)
-  #:use-module (ice-9 regex)
-  #:export (typed-value
-	    typed-value-predicate
-	    typed-value-value
-	    typed-value?
-	    make-typed-value))
+  #:use-module (ice-9 regex))
 
 (define hex-integer-regexp "^0x[0-9a-fA-F]+$")
 (define xml-integer-regexp "^[-+]?[0-9]+$")
-
-(define-record-type typed-value
-  (make-typed-value value predicate)
-  typed-value?
-  (value typed-value-value)
-  (predicate typed-value-predicate))
-
-(set-record-type-printer! 
- typed-value 
- (lambda (value port)
-   (format 
-    port "<~a: ~a>" 
-    (procedure-name (typed-value-predicate value))
-    (typed-value-value value))))
-
-(define-public (typed-value-check val)
-  ((typed-value-predicate val) val))
 
 (define-once documentation (make-hash-table))
 
