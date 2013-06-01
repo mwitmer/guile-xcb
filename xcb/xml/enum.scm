@@ -1,14 +1,10 @@
 (define-module (xcb xml enum)
-  #:use-module (srfi srfi-9))
+  #:use-module (srfi srfi-9)
+  #:use-module (xcb xml records)
+  #:use-module (srfi srfi-9 gnu))
 
-(define-record-type xcb-enum
-  (make-xcb-enum-internal key-value-hash value-key-hash)
-  xcb-enum?
-  (key-value-hash key-value-hash)
-  (value-key-hash value-key-hash))
-
-(define-public (make-xcb-enum)
-  (make-xcb-enum-internal (make-hash-table) (make-hash-table)))
+(define-public (make-xcb-enum name)
+  (make-xcb-enum-internal name (make-hash-table) (make-hash-table)))
 
 (define-public (xcb-enum-set! enum key val)
   (hashq-set! (key-value-hash enum) key val)
@@ -19,3 +15,6 @@
 
 (define-public (xcb-enum-key-get enum val)
   (hashq-ref (value-key-hash enum) val))
+
+(define-public (xcb-enum-or enum . values)
+  (apply logior (map (lambda (value) (xcb-enum-get enum value)) values)))

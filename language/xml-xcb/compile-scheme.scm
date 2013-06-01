@@ -1,39 +1,25 @@
 (define-module (language xml-xcb compile-scheme)
+  #:use-module (rnrs bytevectors)
   #:use-module (ice-9 regex)
+  #:use-module (ice-9 curried-definitions)
+  #:use-module (ice-9 pretty-print)
   #:use-module (ice-9 receive)
+  #:use-module (ice-9 binary-ports)
   #:use-module (srfi srfi-1)
   #:use-module (xcb xml struct)
   #:use-module (xcb xml type)
+  #:use-module (language xml-xcb support)
   #:use-module (sxml simple)
   #:use-module (sxml match))
 
-(load-extension "libguile_xcb_expression" "init_xcb_expressions")
-
-(define-public (parse-file file)
-  (with-input-from-file file
-    (lambda ()  
-      (let ((exp (xml->sxml #:trim-whitespace? #t)))
-	(compile-body (if (eq? (caadr exp) '*PI*)
-			  (caddr exp)
-			  (cadr exp))
-		      #f)))))
-
-(define-public (parse-string string)
-  (let ((exp (xml->sxml string #:trim-whitespace? #t)))
-    (compile-body (if (eq? (caadr exp) '*PI*)
-		      (caddr exp)
-		      (cadr exp))
-		  #f)))
-
 (define-public (compile-scheme exp env opts)
-  (values
-   (compile-body 
-    (if (eq? (caadr exp) '*PI*)
-	(caddr exp)
-	(cadr exp))
-    env)
-   env
-   env))
+  (let ((syn (top-level-match exp env)))
+    (values
+     `(begin
+        ,(element-syntax-syntax syn)
+        ,(element-syntax-documentation-syntax syn))
+     env
+     env)))
 
 (define (false-or pred?) (lambda (exp) (or (not exp) (pred? exp))))
 
@@ -120,13 +106,13 @@
 
 (define (proc-for-op op)
   (case (string->symbol op)
-    ((+) 'xcb-add)
-    ((-) 'xcb-subtract)
-    ((*) 'xcb-multiply)
-    ((~) 'xcb-not)
-    ((/) 'xcb-divide)
-    ((&) 'xcb-and)
-    ((<<) 'xcb-lsh)))
+    ((+) '+)
+    ((-) '-)
+    ((*) '*)
+    ((~) 'lognot)
+    ((/) 'quotient)
+    ((&) 'logand)
+    ((<<) 'ash)))
 
 (define* (exprfield-match exp #:optional ignore-error?)
   (sxml-match exp
@@ -142,7 +128,17 @@
       ((false-or string?) enum)
       ((false-or string?) altenum)
       ((false-or string?) mask))
-     (make-element-syntax 'exprfield expression #f))    
+     (make-element-syntax 
+      'exprfield
+      `(,(string->symbol name)
+	(resolve-type ,(string->symbol type) 
+		      ,(if mask (string->symbol mask) #f) 
+		      ,(cond (enum (string->symbol enum))
+			     (altenum (string->symbol altenum))
+			     (else #f))
+		      ,(if enum #t #f))
+	*expr*
+	,(element-syntax-syntax expression)) #f))    
     (,otherwise (xml-xcb-parse-error exp ignore-error?))))
 
 (define* (reply-match exp request-name #:optional ignore-error?)
@@ -152,19 +148,36 @@
 	       fields-match
 	       switch-match		  
 	       doc-match) -> reply-fields] ...)
-     (receive (pads fields lists valueparams switch doc)
+     (receive (fields valueparams switches doc)
 	 (partition-elements reply-fields
-			     '(field 0 #f)
-			     '(pad 0 #f)
-			     '(list 0 #f)
+			     '((field pad list) 0 #f)
 			     '(valueparam 0 #f)
 			     '(switch 0 1)
 			     '(doc 0 1))
-       (if  (= (length (append fields pads lists valueparams)) 0)
+       (if  (= (length (append fields valueparams)) 0)
 	   (error "xml-xcb: Need at least one fields or valueparam element in reply."))
        (make-element-syntax
 	'reply
-	#f
+	(let* ((fields 
+                (cons
+                 (make-element-syntax 'field '(length CARD32) #f)
+                 fields))
+               (switch-syntax (if (not (null? switches)) 
+                                  (element-syntax-syntax (car switches)) #f))
+               (reply-struct-name 
+		(symbol-append (string->symbol request-name) '-reply))
+	       (fields-syntax (map element-syntax-syntax fields))
+	       (valueparam-syntax (if (not (null? valueparams))
+				      (element-syntax-syntax (car valueparams))
+				      #f)))
+	  `(begin
+	     ,(get-define-xcb-struct-syntax 
+	       reply-struct-name 
+	       (if (not (null? valueparams))
+		   (merge-valueparam-with-fields 
+		    (element-syntax-syntax (car valueparams))
+		    fields)
+		   fields) switch-syntax)))
 	(if (= (length doc) 1)
 	    (element-syntax-documentation-syntax (car doc))
 	    #f))))
@@ -172,14 +185,18 @@
 
 (define* (valueparam-match exp #:optional ignore-error?)
   (sxml-match exp
-    ((valueparam (@ (value-mask-type ,value-mask-type)
-		    (value-mask-name ,value-mask-name)
-		    (value-list-name ,value-list-name)))
+    ((valueparam (@ [value-mask-type ,value-mask-type]
+		    [value-mask-name ,value-mask-name]
+		    [value-list-name ,value-list-name]))
      (guard
       (string? value-mask-type)
       (string? value-mask-name)
       (string? value-list-name))
-     (make-element-syntax 'valueparam #f #f))
+     (make-element-syntax 
+      'valueparam 
+      `((value-mask-type . ,value-mask-type) 
+        (value-mask-name . ,(string->symbol value-mask-name))
+        (value-list-name . ,(string->symbol value-list-name))) #f))
     (,otherwise (xml-xcb-parse-error exp ignore-error?))))
 
 (define* (field-match exp #:optional ignore-error?)
@@ -195,13 +212,10 @@
       ((false-or string?) enum)
       ((false-or string?) altenum)
       ((false-or string?) mask))
-     (make-element-syntax 'field `(,(string->symbol name) 
-				   (resolve-type ,(string->symbol type) 
-						 ,(if mask (string->symbol mask) #f) 
-						 ,(cond (enum (string->symbol enum))
-							(altenum (string->symbol altenum))
-							(else #f))
-						 ,(if enum #t #f))) #f))
+     (make-element-syntax 
+      'field 
+      `(,(string->symbol name) 
+	,(resolve-type-syntax type mask enum altenum)) #f))
     (,otherwise (xml-xcb-parse-error exp ignore-error?))))
 
 (define* (pad-match exp #:optional ignore-error?)
@@ -211,6 +225,14 @@
       (xml-integer? bytes))
      (make-element-syntax 'pad `(*pad* ,(string->number bytes)) #f))
     (,otherwise (xml-xcb-parse-error exp ignore-error?))))
+
+(define (resolve-type-syntax type mask enum altenum)
+  `(resolve-type ,(string->symbol type) 
+		,(if mask (string->symbol mask) #f) 
+		,(cond (enum (string->symbol enum))
+		       (altenum (string->symbol altenum))
+		       (else #f))
+		,(if enum #t #f)))
 
 (define* (list-match exp #:optional ignore-error?)
   (sxml-match exp
@@ -226,17 +248,14 @@
       ((false-or string?) enum)
       ((false-or string?) altenum)
       ((false-or string?) mask))
-     (make-element-syntax 'list `(,(string->symbol name)
-				  (resolve-type ,(string->symbol type) 
-						 ,(if mask (string->symbol mask) #f) 
-						 ,(cond (enum (string->symbol enum))
-							(altenum (string->symbol altenum))
-							(else #f))
-						 ,(if enum #t #f))
-				  *list*
-				  ,(if (= (length expression) 1)
-				       (element-syntax-syntax (car expression))
-				       #f)) #f))
+     (make-element-syntax 
+      'list 
+      `(,(string->symbol name)
+	,(resolve-type-syntax type mask enum altenum)
+	*list*
+	,(if (= (length expression) 1)
+	     (element-syntax-syntax (car expression))
+	     #f)) #f))
     (,otherwise (xml-xcb-parse-error exp ignore-error?))))
 
 (define* (fields-match exp #:optional ignore-errors?)
@@ -255,16 +274,47 @@
 		fields-match) -> switch-fields] ...)
      (guard
       (string? name))
-     (receive (bitcases expressions pads lists fields)
+     (receive (bitcases expressions fields)
 	 (partition-elements switch-fields
 			     '(bitcase 1 #f)
 			     '(expression 1 1)
-			     '(pads 0 1)
-			     '(lists 0 1)
-			     '(fields 0 1))
-       (if (> (length (append pads lists fields)) 1)
-	   (error "xml-xcb: Too many fields in switch expression"))
-      (make-element-syntax 'switch #f #f)))
+                             '((field pad list) 0 1))
+       (make-element-syntax 
+        'switch 
+        `(make-xcb-switch 
+          (quote ,(string->symbol name)) 
+          ,(element-syntax-syntax (car expressions)) 
+          (list ,@(map element-syntax-syntax bitcases))
+          ,(if (null? fields) #f 
+               (make-quoted-field (car fields)))) #f)))
+    (,otherwise (xml-xcb-parse-error exp ignore-errors?))))
+
+(define (make-quoted-field field) 
+  `(xcb-struct-field-specifier ,@(element-syntax-syntax field)))
+
+(define* (bitcase-match exp #:optional ignore-errors?)
+  (sxml-match exp
+    ((bitcase (@ (name (,name #f)))
+	      ,[expression-match -> expression]
+	      ,[(combine-matchers
+		 fields-match
+		 switch-match) -> bitcase-fields] ...)
+     (guard
+      ((false-or string?) name))
+     (receive (fields switches)
+	 (partition-elements bitcase-fields
+			     '((field pad list) 1 #f)
+                             '(switch 0 1))
+       (let ((fields-syntax (map make-quoted-field fields)))
+         (make-element-syntax 
+          'bitcase
+          `(make-xcb-case-expression 
+            (quote ,(if name (string->symbol name) #f))
+            ,(element-syntax-syntax expression)
+            ,(cons 'list fields-syntax)
+            ,(if (null? switches) #f 
+                 (element-syntax-syntax (car switches))))
+          #f))))
     (,otherwise (xml-xcb-parse-error exp ignore-errors?))))
 
 (define* (item-match exp #:optional ignore-errors?)
@@ -288,235 +338,69 @@
 	`(,name ,doc))))
     (,otherwise (xml-xcb-parse-error exp ignore-errors?))))
 
-(define* (bitcase-match exp #:optional ignore-errors?)
-  (sxml-match exp
-    ((bitcase (@ (name (,name #f)))
-	      ,[expression-match -> expression]
-	      ,[(combine-matchers
-		 fields-match
-		 switch-match) -> fields] ...)
-     (guard
-      ((false-or string?) name))
-     (make-element-syntax 'bitcase #f #f))
-    (,otherwise (xml-xcb-parse-error exp ignore-errors?))))
+(define (append-if-not-present lis el)
+  (if (not (find (lambda (mem) (eq? mem el)) lis))
+      (append lis (list el))
+      lis))
 
-(define (macro-match exp)
-  (sxml-match exp
-    ((request (@ (name ,name)
-		 (opcode ,opcode)
-		 (combine-adjacent (,combine-adjacent #f)))
-	      ,[(combine-matchers 
-		 exprfield-match
-		 valueparam-match
-		 fields-match
-		 switch-match
-		 (lambda* (el #:optional ignore-error?) 
-		   (reply-match el name ignore-error?))
-		 doc-match) -> request-fields] ...)
-     (guard
-      (string? name)
-      (xml-integer? opcode)
-      ((false-or xml-boolean?) combine-adjacent))
-     (receive (exprfields valueparams fields pads lists switches replies doc)
-	 (partition-elements request-fields
-			     '((field list pad exprfield) 0 #f)
-			     '(valueparam 0 #f)
-			     '(switch 0 1)
-			     '(reply 0 1)
-			     '(doc 0 1))
-       (make-element-syntax 
-	'request #f 
-	(if (= (length doc) 1)
-	    `(begin
-	       (register-documentation xcbdoc
-		'request ,name
-		,(element-syntax-documentation-syntax (car doc)))
-	       ,(if (and
-		     (= (length replies) 1)
-		     (element-syntax-documentation-syntax (car replies)))
-		    `(register-documentation xcbdoc
-		      'reply ,name
-		      ,(element-syntax-documentation-syntax (car replies)))
-		    #f))
-	    #f))))
-    ((event (@ (name ,name)
-	       (number ,number)
-	       (no-sequence-number (,no-sequence-number? #f)))
-	    ,[(combine-matchers
-	       doc-match
-	       fields-match) -> fields] ...)
-     (guard
-      (string? name)
-      (xml-integer? number)
-      ((false-or xml-boolean?) no-sequence-number?))
-     (receive (doc pad field list)
-	 (partition-elements fields
-			     '(doc 0 1)
-			     '(pad 0 #f)
-			     '(field 0 #f)
-			     '(list 0 #f))
-       (make-element-syntax
-	'event
-	#f
-	(if (= (length doc) 1)
-	    `(register-documentation xcbdoc 
-	      'event ,name 
-	      ,(element-syntax-documentation-syntax (car doc)))
-	    #f))))
-    ((eventcopy (@ (name ,name)
-		   (number ,number)
-		   (ref ,ref)))
-     (guard
-      (string? name)
-      (xml-integer? number)
-      (string? ref))
-     (make-element-syntax 'eventcopy #f #f))
-    ((errorcopy (@ (name ,name)
-		   (number ,number)
-		   (ref ,ref)))
-     (guard
-      (string? name)
-      (xml-integer? number)
-      (string? ref))
-     (make-element-syntax 'errorcopy #f #f))
-    ((error (@ (name ,name)
-	       (number ,number))
-	    ,[fields-match -> fields] ...)
-     (guard
-      (string? name)
-      (xml-integer? number))
-     (receive (fields pads lists)
-	 (partition-elements fields
-			     '(field 0 #f)
-			     '(pad 0 #f)
-			     '(list 0 #f))
-       (make-element-syntax 'error #f #f)))
-    ((import ,import) (guard (string? import)) 
-     (make-element-syntax 'import `(xcb xml ext ,(string->symbol import)) #f))
-    ((xidtype (@ (name ,name))) (guard (string? name)) 
-     (make-element-syntax 
-      'xidtype `(define-public 
-		  ,(string->symbol name) 
-		  (self-type (quote ,(string->symbol name)) 
-			     (pack-int-proc 4) (unpack-int-proc 4) #t)) #f))
-    ((xidunion (@ (name ,name))
-	       (type ,types) ...)
-     (guard
-      (string? name)
-      (>= (length types) 1)
-      (every string? types))
-     (make-element-syntax 
-      'xidunion 
-      `(define-public 
-	 ,(string->symbol name) 
-	 (self-union-type 
-	  (quote ,(string->symbol name))
-	  (list ,@(map (lambda (type) (string->symbol type)) types))
-	  (pack-int-proc 4) (unpack-int-proc 4) #t)) #f))
-    ((enum (@ (name ,name))
-	   ,[(combine-matchers
-	      item-match
-	      doc-match) -> elements] ...)
-     (guard
-      (string? name))
-     (receive (items doc)
-	 (partition-elements elements 
-			     '(item 1 #f)
-			     '(doc 0 1))
-       (make-element-syntax 
-	'enum
-	`(begin
-	   (define-public 
-	     ,(string->symbol name)
-	     (make-xcb-enum))
-	   ,@(let item-creator ((items items) (next-value 0))
-	       (if (not (null? items))
-		   (let* ((item-syntax (element-syntax-syntax (car items)))
-			  (provided-value (cdr item-syntax)))
-		     (cons
-		      `(xcb-enum-set! ,(string->symbol name)
-				      (quote ,(car item-syntax))
-				      ,(if provided-value `(,provided-value #f) next-value))
-		      (if provided-value
-			  (item-creator (cdr items) next-value)
-			  (item-creator (cdr items) (1+ next-value)))))
-		   '())))
-	(if (= (length doc) 1)
-	    `(register-documentation xcbdoc
-	      'enum ,name 
-	      ,(element-syntax-documentation-syntax (car doc)))
-	    #f))))
-    ((typedef (@ (oldname ,oldname)
-		 (newname ,newname)))
-     (guard (string? oldname)
-	    (string? newname))
-     (make-element-syntax 
-      'typedef
-      `(define-public ,(string->symbol newname) 
-	 (clone-xcb-type 
-	  (quote ,(string->symbol newname)) 
-	  ,(string->symbol oldname)))
-      #f))
-    ((struct (@ (name ,name))
-	     ,[(combine-matchers 
-		fields-match 
-		switch-match) -> fields] ...)
-     (guard
-      (string? name))
-     (receive (fields switches)
-	 (partition-elements fields
-			     '((field list pad) 0 #f)
-			     '(switch 0 1))
-       (if (= (length fields) 0)
-	   (error "xml-xcb: struct must contain at least one fields element"))
-       (let ((name-sym (string->symbol name)))
-	(make-element-syntax 
-	 'struct 
-	 `(define-xcb-struct 
-	    ,name-sym
-	    (,(symbol-append 'make- name-sym) 
-	     ,@(delete
-	      '*pad*
-	      (map 
-	       (lambda (field) 
-		 (car (element-syntax-syntax field)))
-	       (filter
+(define (merge-valueparam-with-fields valueparam fields)
+  (let ((value-mask-name (assoc-ref valueparam 'value-mask-name))
+	(value-mask-type (assoc-ref valueparam 'value-mask-type))
+	(value-list-name (assoc-ref valueparam 'value-list-name)))
+    (let ((value-list-syntax 
+	   (make-element-syntax 
+	    'list 
+	    `(,value-list-name 
+	      CARD32
+	      *list*
+	      (lambda (field-ref)
+		(logcount (field-ref (quote ,value-mask-name)))))
+	    #f)))
+      (if (not (find
 		(lambda (field)
-		  (not (eq? (element-syntax-tag field) 'list)))
-		fields))))
-	    ,(symbol-append name-sym '?)
-	    ,(symbol-append name-sym '-type)
-	    ,(if (not (null? switches)) 
-		 (element-syntax-syntax (car switches)) 
-		 #f)
-	    ,@(map 
-	       (lambda (field) 
-		 (let* ((syn (element-syntax-syntax field))
-			(field-name (car syn)))
-		   (if (eq? field-name '*pad*)
-		       syn
-		       (append 
-			syn 
-			(list
-			 (symbol-append name-sym '-get- field-name)
-			 (symbol-append name-sym '-set- field-name '!))))))
-	       fields)) #f))))
-    ((union (@ (name ,name))
-	    ,[(combine-matchers
-	       switch-match
-	       fields-match) -> fields] ...)
-     (guard
-      (string? name))
-     (receive (fields pads lists switches)
-	 (partition-elements fields
-			     '(field 0 #f)
-			     '(list 0 #f)
-			     '(pad 0 #f)
-			     '(switch 0 1))
-       (if (= (length (append fields lists pads)) 0)
-	   (error "xml-xcb: struct must contain at least one fields element"))
-       (make-element-syntax 'struct #f #f)))
-    (,otherwise (xml-xcb-parse-error exp #f))))
+		  (eq? (car (element-syntax-syntax field)) value-mask-name))
+		fields))
+	  (append fields 
+		  (list 
+		   (make-element-syntax
+		    'field
+		    `(,value-mask-name
+		      ,(resolve-type-syntax value-mask-type #f #f #f))
+		    #f)
+		   value-list-syntax))
+	  (append fields (list value-list-syntax))))))
+
+(define (get-define-xcb-struct-syntax name-sym fields switch)
+  `(define-xcb-struct 
+     ,name-sym
+     (,(symbol-append 'make- name-sym) 
+      ,@(delete
+	 '*pad*
+	 (map 
+	  (lambda (field) 
+	    (car (element-syntax-syntax field)))
+	  (filter
+	   (lambda (field)
+	     (and
+	      (not (eq? (element-syntax-tag field) 'exprfield))))
+	   fields))))
+     ,(symbol-append name-sym '?)
+     ,(symbol-append name-sym '-type)
+     ,switch
+     ,@(map (struct-field-syntax name-sym) fields)))
+
+;; TODO: Optional switch expression arguments
+(define (get-field-argument-names fields valueparam switch)
+  (define (expr? field) (and (> (length field) 2) (eq? (caddr field) '*expr*)))
+  (define actual-fields (filter (lambda (f) (not (eq? (car f) '*pad*))) fields))
+  (define required-fields (filter (lambda (f) (not (expr? f))) actual-fields))
+  (define immediate-fields
+   (if (not valueparam)
+       (map car required-fields)
+       (delq 'value_mask
+             (append (map car required-fields) 
+                     '(valueparam-enum valueparam-assoc)))))
+  (if switch (append immediate-fields `(,(cadadr switch))) immediate-fields))
 
 (define* (expression-match exp #:optional ignore-errors?)
   (sxml-match exp
@@ -527,23 +411,25 @@
       (find (lambda (el) (equal? el op)) '("+" "-" "/" "*" "&" "<<")))
      (make-element-syntax
       'expression
-      `(lambda (field-ref) (,(proc-for-op op) (,expression1 field-ref) (,expression2 field-ref)))
+      `(lambda (field-ref) (,(proc-for-op op) 
+			    (,(element-syntax-syntax expression1) field-ref) 
+			    (,(element-syntax-syntax expression2) field-ref)))
       #f))
     ((unop (@ (op ,op))
 	   ,[expression-match -> expression])
      (guard (equal? op "~"))
      (make-element-syntax
       'expression
-      `(lambda (field-ref) (,(proc-for-op op) (,expression field-ref)))
+      `(lambda (field-ref) (,(proc-for-op op) 
+			    (,(element-syntax-syntax expression) field-ref)))
       #f))
     ((fieldref ,fieldref) (guard (string? fieldref))
      (make-element-syntax 'expression `(lambda (field-ref) (field-ref 
 							    ',(string->symbol fieldref))) #f))
-;;,(string->symbol fieldref)
     ((enumref (@ (ref ,ref)) ,enumref) (guard (string? enumref) (string? ref)) 
-     (make-element-syntax 'expression `(lambda (field-ref) (enum-ref 
+     (make-element-syntax 'expression `(lambda (field-ref) (xcb-enum-get 
 							    ,(string->symbol ref) 
-							    ,(string->symbol enumref))) #f))
+							    (quote ,(string->symbol enumref)))) #f))
     ((sumof (@ (ref ,ref))) (guard (string? ref)) 
      (make-element-syntax
       'expression
@@ -559,11 +445,11 @@
      (make-element-syntax 
       'expression 
       `(lambda (field-ref) 
-	 (xcb-popcount (,expression field-ref))) #f))
+	 (logcount (,(element-syntax-syntax expression) field-ref))) #f))
     ((value ,value) (guard (dec-or-hex-integer? value)) 
-     (make-element-syntax 'expression `(lambda (field-ref) (parse-dec-or-hex-integer ,value)) #f))
+     (make-element-syntax 'expression `(lambda (field-ref) ,(parse-dec-or-hex-integer value)) #f))
     ((bit ,bit) (guard (xml-integer? bit)) 
-     (make-element-syntax 'expression `(lambda (field-ref) (xcb-lsh 1 (string->number ,bit))) #f))
+     (make-element-syntax 'expression `(lambda (field-ref) (ash 1 (string->number ,bit))) #f))
     (,otherwise (xml-xcb-parse-error exp ignore-errors?))))
 
 (define (doc-fields-match exp)
@@ -630,61 +516,369 @@
 		     ,@(extract-documentation-syntax example 'example #t)))))))
     (,otherwise (xml-xcb-parse-error exp ignore-errors?))))
 
+(define (request-syntax name fields switches replies valueparams opcode)
+  (define request-name (string->symbol name))
+  (define request-struct-name (symbol-append (string->symbol name) '-struct))
+  (define fields-syntax (map element-syntax-syntax fields))
+  (define switch-syntax (if (null? switches) #f 
+                            (element-syntax-syntax (car switches))))
+  (define has-reply? (not (null? replies)))
+  (define valueparam-syntax 
+    (if (not (null? valueparams)) (element-syntax-syntax (car valueparams)) #f))
+  (define field-argument-names 
+    (get-field-argument-names fields-syntax valueparam-syntax switch-syntax))
+  (define struct-syntax
+    (get-define-xcb-struct-syntax 
+     request-struct-name
+     (if valueparam-syntax
+         (merge-valueparam-with-fields 
+          (element-syntax-syntax (car valueparams))
+          fields)
+         fields) switch-syntax))
+  (define hook-syntax
+    `(define hook
+       ,(if has-reply?
+            `(xcb-connection-register-reply-hook!
+              xcb-conn ,(symbol-append request-name '-reply))
+            `*unspecified*)))
+  (define valueparam-result-syntax
+    (if valueparam-syntax 
+        `(valueparam valueparam-enum
+           valueparam-assoc)
+        `(values #f #f)))
+  (define basic-arguments 
+    `(list ,@(map (lambda (field) `(cons (quote ,field) ,field))
+                  (if valueparam-syntax
+                      (drop-right field-argument-names 2)
+                      field-argument-names))))
+  `(begin
+     ,struct-syntax
+     ,@(if has-reply? (list (element-syntax-syntax (car replies))) '())
+     (define-public (,request-name xcb-conn ,@field-argument-names)
+       ,hook-syntax
+       (call-with-values (lambda () ,valueparam-result-syntax)
+         (lambda (valuemask valuelist)
+           (xcb-connection-send 
+            xcb-conn 
+            (if in-extension? 
+                (get-extension-opcode) ,(parse-dec-or-hex-integer opcode))
+            (if in-extension? ,(parse-dec-or-hex-integer opcode) #f)
+            (xcb-struct-pack-to-bytevector
+             ,request-struct-name
+             (construct-xcb-struct 
+              ,request-struct-name
+              ,(append 
+                basic-arguments 
+                (if valueparam-syntax 
+                    (list
+                     `(cons (quote ,(assq-ref valueparam-syntax 
+                                              'value-mask-name)) 
+                            valuemask)
+                     `(cons (quote ,(assq-ref valueparam-syntax 
+                                              'value-list-name)) 
+                            valuelist))
+                    '())))))))
+       hook)))
 
-(define (compile-body exp env)
+(define ((struct-field-syntax name-sym) field) 
+  (let* ((syn (element-syntax-syntax field))
+         (field-name (car syn)))
+    (if (eq? field-name '*pad*)
+        syn
+        (append 
+         syn 
+         (list
+          (symbol-append name-sym '-get- field-name)
+          (symbol-append name-sym '-set- field-name '!))))))
+
+(define (top-level-match exp env)
   (sxml-match exp
+    ((request (@ (name ,name)
+		 (opcode ,opcode)
+		 (combine-adjacent (,combine-adjacent #f)))
+	      ,[(combine-matchers 
+		 exprfield-match
+		 valueparam-match
+		 fields-match
+		 switch-match
+		 (lambda* (el #:optional ignore-error?) 
+		   (reply-match el name ignore-error?))
+		 doc-match) -> request-fields] ...)
+     (guard
+      (string? name)
+      (xml-integer? opcode)
+      ((false-or xml-boolean?) combine-adjacent))
+     (receive (fields valueparams switches replies doc)
+	 (partition-elements request-fields
+			     '((field list pad exprfield) 0 #f)
+			     '(valueparam 0 #f)
+			     '(switch 0 1)
+			     '(reply 0 1)
+			     '(doc 0 1))
+       (make-element-syntax 
+	'request
+        (request-syntax name fields switches replies valueparams opcode)
+	(if (= (length doc) 1)
+	    `(begin
+	       (register-documentation xcbdoc
+				       'request ,name
+				       ,(element-syntax-documentation-syntax (car doc)))
+	       ,(if (and
+		     (= (length replies) 1)
+		     (element-syntax-documentation-syntax (car replies)))
+		    `(register-documentation xcbdoc
+					     'reply ,name
+					     ,(element-syntax-documentation-syntax (car replies)))
+		    #f))
+	    #f))))
+    ((event (@ (name ,name)
+	       (number ,number)
+	       (no-sequence-number (,no-sequence-number? #f)))
+	    ,[(combine-matchers
+	       doc-match
+	       fields-match) -> fields] ...)
+     (guard
+      (string? name)
+      (xml-integer? number)
+      ((false-or xml-boolean?) no-sequence-number?))
+     (receive (doc fields)
+	 (partition-elements fields
+			     '(doc 0 1)
+			     '((field pad list) 0 #f))
+       
+       (make-element-syntax
+	'event
+	(let ((event-struct-name (string->symbol name)))
+	  `(begin
+	     ,(get-define-xcb-struct-syntax 
+	       event-struct-name 
+	       (if no-sequence-number? 
+		   fields
+		   `(,(car fields) . 
+		     (,(make-element-syntax 'field '(sequence_number CARD16) #f) . ,(cdr fields)))) #f)
+	     (hashv-set! xcb-events ,(parse-dec-or-hex-integer number) ,event-struct-name)))
+	(if (= (length doc) 1)
+	    `(register-documentation xcbdoc 
+				     'event ,name 
+				     ,(element-syntax-documentation-syntax (car doc)))
+	    #f))))
+    ((eventcopy (@ (name ,name)
+		   (number ,number)
+		   (ref ,ref)))
+
+     (guard
+      (string? name)
+      (xml-integer? number)
+      (string? ref))
+     (make-element-syntax 
+      'eventcopy 
+      (let ((event-struct-name (string->symbol name))
+	    (old-event-struct-name (string->symbol ref)))
+	`(begin
+           (clone-xcb-struct 
+            ,old-event-struct-name 
+            ,event-struct-name
+            ,(symbol-append 'make- event-struct-name)
+            ,(symbol-append event-struct-name '?)
+            ,(symbol-append event-struct-name '-type))
+	   (hashv-set! xcb-events ,(parse-dec-or-hex-integer number) ,event-struct-name))) #f))
+    ((errorcopy (@ (name ,name)
+		   (number ,number)
+		   (ref ,ref)))
+     (guard
+      (string? name)
+      (xml-integer? number)
+      (string? ref))
+     (make-element-syntax 
+      'errorcopy 
+      (let ((error-struct-name (string->symbol (string-append name "-error")))
+	    (old-error-struct-name (string->symbol (string-append ref "-error"))))
+	`(begin
+	   (clone-xcb-struct 
+            ,old-error-struct-name 
+            ,error-struct-name
+            ,(symbol-append 'make- error-struct-name)
+            ,(symbol-append error-struct-name '?)
+            ,(symbol-append error-struct-name '-type))
+	   (hashv-set! xcb-errors ,(parse-dec-or-hex-integer number) ,error-struct-name))) #f))
+    ((error (@ (name ,name)
+	       (number ,number))
+	    ,[fields-match -> fields] ...)
+     (guard
+      (string? name)
+      (xml-integer? number))
+     (receive (field)
+	 (partition-elements fields
+			     '((field pad list) 0 #f)
+			     '(pad 0 #f)
+			     '(list 0 #f))
+       (make-element-syntax 
+	'error 
+	(let ((error-struct-name (string->symbol (string-append name "-error"))))
+	  `(begin
+	     ,(get-define-xcb-struct-syntax 
+	       error-struct-name 
+	       fields
+	       #f)
+	     (hashv-set! xcb-errors ,(parse-dec-or-hex-integer number) ,error-struct-name))) #f)))
+    ((import ,import) (guard (string? import))
+     (if (not (string= "xproto" import))
+         (make-element-syntax 'import `(use-modules (xcb xml ext ,(string->symbol import))) #f)
+         (make-element-syntax 'import #f #f)))
+    ((xidtype (@ (name ,name))) (guard (string? name)) 
+     (make-element-syntax 
+      'xidtype `(define-public 
+		  ,(string->symbol name)
+		  (self-type (quote ,(string->symbol name)) 
+			     (pack-int-proc 4) (unpack-int-proc 4) #t)) #f))
+    ((xidunion (@ (name ,name))
+	       (type ,types) ...)
+     (guard
+      (string? name)
+      (>= (length types) 1)
+      (every string? types))
+     (make-element-syntax 
+      'xidunion 
+      `(define-public 
+	 ,(string->symbol name) 
+	 (self-union-type 
+	  (quote ,(string->symbol name))
+	  (list ,@(map (lambda (type) (string->symbol type)) types))
+	  (pack-int-proc 4) (unpack-int-proc 4) #t)) #f))
+    ((enum (@ (name ,name))
+	   ,[(combine-matchers
+	      item-match
+	      doc-match) -> elements] ...)
+     (guard
+      (string? name))
+     (receive (items doc)
+	 (partition-elements elements 
+			     '(item 1 #f)
+			     '(doc 0 1))
+       (make-element-syntax 
+	'enum
+	`(begin
+	   (define-public 
+	     ,(string->symbol name)
+	     (make-xcb-enum ,name))
+	   ,@(let item-creator ((items items) (next-value 0))
+	       (if (not (null? items))
+		   (let* ((item-syntax (element-syntax-syntax (car items)))
+			  (provided-value (cdr item-syntax)))
+		     (cons
+		      `(xcb-enum-set! ,(string->symbol name)
+				      (quote ,(car item-syntax))
+				      ,(if provided-value `(,provided-value #f) next-value))
+		      (if provided-value
+			  (item-creator (cdr items) next-value)
+			  (item-creator (cdr items) (1+ next-value)))))
+		   '())))
+	(if (= (length doc) 1)
+	    `(register-documentation xcbdoc
+				     'enum ,name 
+				     ,(element-syntax-documentation-syntax (car doc)))
+	    #f))))
+    ((typedef (@ (oldname ,oldname)
+		 (newname ,newname)))
+     (guard (string? oldname)
+	    (string? newname))
+     (make-element-syntax 
+      'typedef
+      `(define-public ,(string->symbol newname) 
+	 (clone-xcb-type 
+	  (quote ,(string->symbol newname)) 
+	  ,(string->symbol oldname)))
+      #f))
+    ((struct (@ (name ,name))
+	     ,[(combine-matchers 
+		fields-match 
+		switch-match) -> fields] ...)
+     (guard
+      (string? name))
+     (receive (fields switches)
+	 (partition-elements fields
+			     '((field list pad) 0 #f)
+			     '(switch 0 1))
+       (if (= (length fields) 0)
+	   (error "xml-xcb: struct must contain at least one fields element"))
+       (let ((name-sym (string->symbol name)))
+	 (make-element-syntax 
+	  'struct 
+	  (get-define-xcb-struct-syntax 
+	   name-sym fields
+	   (if (not (null? switches))
+	       (element-syntax-syntax (car switches))
+	       #f)) #f))))
     ((xcb (@ (header ,header)
 	     (extension-xname (,extension-xname #f))
 	     (extension-name (,extension-name #f))
 	     (extension-multiword (,extension-multiword? #f))
 	     (major-version (,major-version #f))
-	     (minor-version (,minor-version #f)))
-	  ,[macro-match -> macros] ...)
+	     (minor-version (,minor-version #f))))
+	  (guard
+	   (string? header)
+	   ((false-or string?) extension-xname)
+	   ((false-or string?) extension-name)
+	   ((false-or xml-boolean?) extension-multiword?)
+	   ((false-or xml-integer?) major-version)
+	   ((false-or xml-integer?) minor-version))
+          (let ((header-symbol (string->symbol header)))
+            (make-element-syntax 
+             'xcb 
+             `(begin
+                ,(if (and
+                      (module-defined? env 'no-new-xcb-module?) 
+                      (module-ref env 'no-new-xcb-module?))
+                     #f
+                     
+                     (if (eq? header-symbol 'xproto)
+                         `(define-module (xcb xml ,header-symbol))
+                         `(define-module (xcb xml ext ,header-symbol))))
+                (use-modules
+                 (srfi srfi-1)
+                 (ice-9 optargs)
+                 (rnrs bytevectors)
+                 (xcb xml type) 
+                 (xcb xml struct) 
+                 (xcb xml union) 
+                 (xcb xml enum) 
+                 (xcb xml connection) 
+                 (xcb xml enum) 
+                 (xcb xml doc)
+                 (language xml-xcb support)
+                 ,@(if (not (eq? header-symbol 'xproto)) 
+                       '((xcb xml xproto)) '()))
+                (define extension-opcode #f)
+                (define-public xcb-events (make-hash-table))
+                (define-public xcb-errors (make-hash-table))
+                (define-public (get-extension-opcode) extension-opcode)
+                (define-public (set-extension-opcode! opcode) 
+                   (set! extension-opcode opcode))
+                (define in-extension? ,(if (eq? header-symbol 'xproto) #f #t)))
+             '(define xcbdoc (empty-xcb-doc)))))
+    ((union (@ (name ,name))
+	    ,[(combine-matchers
+	       switch-match
+	       fields-match) -> fields] ...)
      (guard
-      (string? header)
-      ((false-or string?) extension-xname)
-      ((false-or string?) extension-name)
-      ((false-or xml-boolean?) extension-multiword?)
-      ((false-or xml-integer?) major-version)
-      ((false-or xml-integer?) minor-version))
-     (receive (enums 
-	       events
-	       requests
-	       errors
-	       eventcopies
-	       errorcopies
-	       structs
-	       unions
-	       xidtypes
-	       xidunions
-	       typedefs
-	       imports)
-	 (partition-elements (filter element-syntax? macros) 
-			     '(enum 0 #f)
-			     '(event 0 #f)
-			     '(request 0 #f)
-			     '(error 0 #f)
-			     '(eventcopy 0 #f)
-			     '(errorcopy 0 #f)
-			     '(struct 0 #f)
-			     '(union 0 #f)
-			     '(xidtype 0 #f)
-			     '(xidunion 0 #f)
-			     '(typedef 0 #f)
-			     '(import 0 #f))
-       `(begin
-	  (use-modules
-	   ,@(if (not (string= header "xproto")) '((xcb xml xproto)) '())
-	   ,@(map (lambda (import) (element-syntax-syntax import)) imports))
-	  (load-extension "libguile_xcb_expression" "init_xcb_expressions")
-	  (define xcbdoc (make-hash-table))
-	  ,@(map element-syntax-syntax (append xidtypes xidunions typedefs enums structs))
-	  ,@(delete 
-	     #f 
-	     (map 
-	      element-syntax-documentation-syntax 
-	      (append requests events enums)))
-	  	  (register-xcb-documentation (quote ,(string->symbol header)) xcbdoc))))
-    (,otherwise 
-     (error "xml-xcb: invalid expression" 
-	    (with-output-to-string (lambda () (sxml->xml otherwise)))))))
+      (string? name))
+     (receive (fields switches)
+	 (partition-elements fields
+			     '((field list pad) 0 #f)
+			     '(switch 0 1))
+       (if (= (length fields) 0)
+	   (error "xml-xcb: struct must contain at least one fields element"))
+       (if (= (length switches) 1)
+	   (error "xml-xcb: switches not supported in unions at present"))
+       (let ((name-sym (string->symbol name)))
+        (make-element-syntax 
+         'union 
+         `(begin
+            (define-xcb-union 
+              ,name-sym
+              ,(symbol-append 'make- (string->symbol name))
+              ,@(map (struct-field-syntax name-sym) fields))
+            (define ,(symbol-append (string->symbol name) '-type) 
+              (xcb-type-for-union ,(string->symbol name))))
+         #f))))
+    (,otherwise (xml-xcb-parse-error exp #f))))

@@ -6,48 +6,25 @@
   #:use-module (ice-9 receive)
   #:use-module (srfi srfi-9 gnu)
   #:use-module (xcb xml enum)
-  #:export (self-type
-	    CARD8
-	    CARD16
-	    CARD32
-	    INT16
-	    typecheck
-	    list-type
-	    typed-value-value
-	    typed-value-type
-	    make-xcb-type
-	    typed-value?
-	    typed-value-unpack
-	    typed-value-pack
-	    xcb-type?
-	    xcb-type-name
-	    xcb-type-list?
-	    xcb-type-opaque?
-	    xcb-type-mask
-	    xcb-type-pack
-	    xcb-type-size
-	    xcb-type-enum
-	    xcb-type-require-enum?
-	    xcb-type-unpack
-	    xcb-type-predicate
-	    make-typed-value))
+  #:use-module (xcb xml records)
+  #:export (list-type mock-new-xid))
+
+;; Some xcb structs are a little too optimistic about how many bytes
+;; they expect to read from the server. Rather than keeping track of
+;; total bytes read and immediately stopping when we reach the length
+;; the server said it would sent, we'll just fill in the remaining
+;; values with zeroes. It's that or a bunch of *undefined*'s; pick
+;; your poison!
+
+(define (safe-bytevector-uint-ref bv start endianness n)
+  (if (eof-object? bv) 0
+      (bytevector-uint-ref bv start endianness n)))
+
+(define (safe-get-u8 bv) (if (eof-object? bv) 0 (get-u8 bv)))
 
 (define-public (type-predicate predicate)
   (lambda (val)
     (predicate (typed-value-value val))))
-
-(define-record-type xcb-type
-  (make-xcb-type name predicate pack unpack opaque?)
-  xcb-type?
-  (name xcb-type-name)
-  (predicate xcb-type-predicate)
-  (pack xcb-type-pack)
-  (unpack xcb-type-unpack)
-  (opaque? xcb-type-opaque?)
-  (list? xcb-type-list?)
-  (mask xcb-type-mask)
-  (enum xcb-type-enum)
-  (require-enum? xcb-type-require-enum?))
 
 (define (typed-value-pack value port) 
   ((xcb-type-pack (typed-value-type value))
@@ -55,10 +32,9 @@
    (typed-value-value value)))
 
 (define (typed-value-unpack type port)
-  (receive (size value) 
-      ((xcb-type-unpack type)
-       port)
-    (values size value)))
+  (define result ((xcb-type-unpack type)
+    port))
+  result)
 
 (define (unsigned-bit-length-predicate bits)
   (lambda (n)
@@ -75,18 +51,26 @@
   (lambda (port value)
    (let ((bv (make-bytevector n)))
      (bytevector-uint-set! bv 0 value (native-endianness) n)
-     (put-bytevector port bv))))
+     (for-each (lambda (n)
+                 (put-u8 port (bytevector-u8-ref bv n)))
+               (iota (bytevector-length bv))))))
 
 (define-public (unpack-int-proc n)
   (lambda (port)
-   (values 
-    n
     (let ((bv (get-bytevector-n port n)))
-      (bytevector-uint-ref bv 0 (native-endianness) n)))))
+      (safe-bytevector-uint-ref bv 0 (native-endianness) n))))
 
 (define-public CARD8
   (make-xcb-type 
    'CARD8 
+   (type-predicate (unsigned-bit-length-predicate 8))
+   (pack-int-proc 1)
+   (unpack-int-proc 1)
+   #f))
+
+(define-public BYTE
+  (make-xcb-type 
+   'BYTE
    (type-predicate (unsigned-bit-length-predicate 8))
    (pack-int-proc 1)
    (unpack-int-proc 1)
@@ -100,12 +84,28 @@
    (unpack-int-proc 2)
    #f))
 
+(define-public INT8
+  (make-xcb-type 
+   'INT8
+   (type-predicate (signed-bit-length-predicate 8))
+   (pack-int-proc 1)
+   (unpack-int-proc 1)
+   #f))
+
 (define-public INT16
   (make-xcb-type 
    'INT16
    (type-predicate (signed-bit-length-predicate 16))
    (pack-int-proc 2)
    (unpack-int-proc 2)
+   #f))
+
+(define-public INT32
+  (make-xcb-type 
+   'INT32
+   (type-predicate (signed-bit-length-predicate 32))
+   (pack-int-proc 4)
+   (unpack-int-proc 4)
    #f))
 
 (define-public CARD32
@@ -116,38 +116,42 @@
    (unpack-int-proc 4)
    #f))
 
+(define-public char
+  (make-xcb-type 
+   'char
+   (type-predicate char?)
+   (lambda (port val)
+     (put-u8 port (char->integer val)))
+   (lambda (port)
+     (integer->char (safe-get-u8 port)))
+   #f))
+
+(define-public void
+  (make-xcb-type 
+   'void
+   (type-predicate (unsigned-bit-length-predicate 8))
+   (pack-int-proc 1)
+   (unpack-int-proc 1)
+   #f))
+
 (define-public BOOL
   (make-xcb-type 
    'BOOL
-   (lambda (v) (or (eq? #t v) (eq? #f v)))
+   (type-predicate boolean?)
    (lambda (port val)
-     (put-u8 port (if val 1 0)))
+     (put-u8 port (if (or (eqv? 0 val) (not val)) 0 1)))
    (lambda (port)
-     (values 1 (> (get-u8 port) 0)))
+     (> (safe-get-u8 port) 0))
    #f))
 
-(define-record-type typed-value
-  (make-typed-value value type)
-  typed-value?
-  (value typed-value-value)
-  (type typed-value-type))
-
-(set-record-type-printer! 
- typed-value 
- (lambda (value port)
-   (format 
-    port "<~a (~a)>"     
-    (typed-value-value value)
-    (xcb-type-name (typed-value-type value)))))
-
-(define (typecheck value)
+(define-public (typecheck value)
   (if (not ((xcb-type-predicate (typed-value-type value)) value))
       (error (format #f "Value ~a does not satisfy its type predicate" 
 		     (typed-value-value value))
 	     (xcb-type-predicate (typed-value-type value))))
   value)
 
-(define (self-type name pack unpack opaque?)
+(define-public (self-type name pack unpack opaque?)
   (letrec ((type
 	    (make-xcb-type 
 	     name 
@@ -156,6 +160,17 @@
 	     unpack
 	     opaque?)))
     type))
+
+(define next-mock-xid-value
+  (let ((current-xid-value -1))
+    (lambda* (#:optional reset?)
+      (set! current-xid-value (if reset? 0 (1+ current-xid-value)))
+      current-xid-value)))
+
+(define* (mock-new-xid xcb-type #:optional reset?)
+  (make-typed-value
+   (next-mock-xid-value reset?)
+   xcb-type))
 
 (define (unsigned-bit-length-predicate bits)
   (lambda (n)
