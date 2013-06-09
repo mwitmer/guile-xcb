@@ -19,18 +19,36 @@
 ##   not, write to the Free Software Foundation, Inc., 51 Franklin
 ##   Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+AUTOMAKE_OPTIONS = -Wno-portability
 ACLOCAL_AMFLAGS = -I ./m4
 
-%.go : %.xml language/xml-xcb/compile-scheme.scm
+%.go : %.xml language/xml-xcb/compile-scheme.go
 	GUILE_FLAGS="-C ${CURDIR}" @GUILE_TOOLS@ compile $< --from=xml-xcb --output=$@
 
+%.go : %.scm
+	GUILE_FLAGS="-C ${CURDIR}" @GUILE_TOOLS@ compile $< --output=$@
+
 SCM_SITE_CCACHE_DIR = $(GUILE_LIB_DIR)/guile/$(GUILE_EFFECTIVE_VERSION)/site-ccache
-CLEANFILES = xcb/xml/xproto.go xcb/xml/ext/*.go
+CLEANFILES = xcb/xml/ext/*.go xcb/xml/*.go language/xml-xcb/*.go
 
 info_TEXINFOS = guile-xcb.texi
 
 godir = $(SCM_SITE_CCACHE_DIR)
 nobase_go_DATA =                              \
+  xcb/xml/records.go                          \
+  xcb/xml/enum.go                             \
+  xcb/xml/type.go                             \
+  language/xml-xcb/support.go                 \
+  xcb/xml/union.go                            \
+  xcb/xml/struct.go                           \
+  xcb/xml/doc.go                              \
+  xcb/xml/connection.go                       \
+  xcb/xml/ext-support.go                      \
+  xcb/xml/core.go                             \
+  xcb/xml/auth.go                             \
+  language/xml-xcb/compile-scheme.go          \
+  language/xml-xcb/spec.go                    \
+  xcb/xml.go                                  \
   xcb/xml/xproto.go                           \
   xcb/xml/ext/bigreq.go                       \
   xcb/xml/ext/xc_misc.go                      \
@@ -60,19 +78,3 @@ nobase_go_DATA =                              \
   xcb/xml/ext/xv.go                           \
   xcb/xml/ext/xvmc.go
 
-scmdir = $(GUILE_SITE)
-nobase_scm_DATA =                             \
-  language/xml-xcb/support.scm                \
-  language/xml-xcb/spec.scm                   \
-  language/xml-xcb/compile-scheme.scm         \
-  xcb/xml/records.scm                         \
-  xcb/xml/enum.scm                            \
-  xcb/xml/type.scm                            \
-  xcb/xml/union.scm                           \
-  xcb/xml/ext-support.scm                     \
-  xcb/xml/struct.scm                          \
-  xcb/xml/doc.scm                             \
-  xcb/xml/connection.scm                      \
-  xcb/xml/core.scm                            \
-  xcb/xml/auth.scm                            \
-  xcb/xml.scm                                 

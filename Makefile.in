@@ -154,8 +154,7 @@ am__can_run_installinfo = \
     n|no|NO) false;; \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
-am__installdirs = "$(DESTDIR)$(infodir)" "$(DESTDIR)$(godir)" \
-	"$(DESTDIR)$(scmdir)"
+am__installdirs = "$(DESTDIR)$(infodir)" "$(DESTDIR)$(godir)"
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
     $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
@@ -183,7 +182,7 @@ am__uninstall_files_from_dir = { \
     || { echo " ( cd '$$dir' && rm -f" $$files ")"; \
          $(am__cd) "$$dir" && rm -f $$files; }; \
   }
-DATA = $(nobase_go_DATA) $(nobase_scm_DATA)
+DATA = $(nobase_go_DATA)
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) $(LISP)
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 distdir = $(PACKAGE)-$(VERSION)
@@ -285,12 +284,27 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
+AUTOMAKE_OPTIONS = -Wno-portability
 ACLOCAL_AMFLAGS = -I ./m4
 SCM_SITE_CCACHE_DIR = $(GUILE_LIB_DIR)/guile/$(GUILE_EFFECTIVE_VERSION)/site-ccache
-CLEANFILES = xcb/xml/xproto.go xcb/xml/ext/*.go
+CLEANFILES = xcb/xml/ext/*.go xcb/xml/*.go language/xml-xcb/*.go
 info_TEXINFOS = guile-xcb.texi
 godir = $(SCM_SITE_CCACHE_DIR)
 nobase_go_DATA = \
+  xcb/xml/records.go                          \
+  xcb/xml/enum.go                             \
+  xcb/xml/type.go                             \
+  language/xml-xcb/support.go                 \
+  xcb/xml/union.go                            \
+  xcb/xml/struct.go                           \
+  xcb/xml/doc.go                              \
+  xcb/xml/connection.go                       \
+  xcb/xml/ext-support.go                      \
+  xcb/xml/core.go                             \
+  xcb/xml/auth.go                             \
+  language/xml-xcb/compile-scheme.go          \
+  language/xml-xcb/spec.go                    \
+  xcb/xml.go                                  \
   xcb/xml/xproto.go                           \
   xcb/xml/ext/bigreq.go                       \
   xcb/xml/ext/xc_misc.go                      \
@@ -319,23 +333,6 @@ nobase_go_DATA = \
   xcb/xml/ext/xtest.go                        \
   xcb/xml/ext/xv.go                           \
   xcb/xml/ext/xvmc.go
-
-scmdir = $(GUILE_SITE)
-nobase_scm_DATA = \
-  language/xml-xcb/support.scm                \
-  language/xml-xcb/spec.scm                   \
-  language/xml-xcb/compile-scheme.scm         \
-  xcb/xml/records.scm                         \
-  xcb/xml/enum.scm                            \
-  xcb/xml/type.scm                            \
-  xcb/xml/union.scm                           \
-  xcb/xml/ext-support.scm                     \
-  xcb/xml/struct.scm                          \
-  xcb/xml/doc.scm                             \
-  xcb/xml/connection.scm                      \
-  xcb/xml/core.scm                            \
-  xcb/xml/auth.scm                            \
-  xcb/xml.scm                                 
 
 all: all-am
 
@@ -544,30 +541,6 @@ uninstall-nobase_goDATA:
 	@list='$(nobase_go_DATA)'; test -n "$(godir)" || list=; \
 	$(am__nobase_strip_setup); files=`$(am__nobase_strip)`; \
 	dir='$(DESTDIR)$(godir)'; $(am__uninstall_files_from_dir)
-install-nobase_scmDATA: $(nobase_scm_DATA)
-	@$(NORMAL_INSTALL)
-	@list='$(nobase_scm_DATA)'; test -n "$(scmdir)" || list=; \
-	if test -n "$$list"; then \
-	  echo " $(MKDIR_P) '$(DESTDIR)$(scmdir)'"; \
-	  $(MKDIR_P) "$(DESTDIR)$(scmdir)" || exit 1; \
-	fi; \
-	$(am__nobase_list) | while read dir files; do \
-	  xfiles=; for file in $$files; do \
-	    if test -f "$$file"; then xfiles="$$xfiles $$file"; \
-	    else xfiles="$$xfiles $(srcdir)/$$file"; fi; done; \
-	  test -z "$$xfiles" || { \
-	    test "x$$dir" = x. || { \
-	      echo " $(MKDIR_P) '$(DESTDIR)$(scmdir)/$$dir'"; \
-	      $(MKDIR_P) "$(DESTDIR)$(scmdir)/$$dir"; }; \
-	    echo " $(INSTALL_DATA) $$xfiles '$(DESTDIR)$(scmdir)/$$dir'"; \
-	    $(INSTALL_DATA) $$xfiles "$(DESTDIR)$(scmdir)/$$dir" || exit $$?; }; \
-	done
-
-uninstall-nobase_scmDATA:
-	@$(NORMAL_UNINSTALL)
-	@list='$(nobase_scm_DATA)'; test -n "$(scmdir)" || list=; \
-	$(am__nobase_strip_setup); files=`$(am__nobase_strip)`; \
-	dir='$(DESTDIR)$(scmdir)'; $(am__uninstall_files_from_dir)
 tags TAGS:
 
 ctags CTAGS:
@@ -738,7 +711,7 @@ check-am: all-am
 check: check-am
 all-am: Makefile $(INFO_DEPS) $(DATA)
 installdirs:
-	for dir in "$(DESTDIR)$(infodir)" "$(DESTDIR)$(godir)" "$(DESTDIR)$(scmdir)"; do \
+	for dir in "$(DESTDIR)$(infodir)" "$(DESTDIR)$(godir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: install-am
@@ -793,8 +766,7 @@ info: info-am
 
 info-am: $(INFO_DEPS)
 
-install-data-am: install-info-am install-nobase_goDATA \
-	install-nobase_scmDATA
+install-data-am: install-info-am install-nobase_goDATA
 
 install-dvi: install-dvi-am
 
@@ -933,8 +905,7 @@ ps: ps-am
 ps-am: $(PSS)
 
 uninstall-am: uninstall-dvi-am uninstall-html-am uninstall-info-am \
-	uninstall-nobase_goDATA uninstall-nobase_scmDATA \
-	uninstall-pdf-am uninstall-ps-am
+	uninstall-nobase_goDATA uninstall-pdf-am uninstall-ps-am
 
 .MAKE: install-am install-strip
 
@@ -946,19 +917,21 @@ uninstall-am: uninstall-dvi-am uninstall-html-am uninstall-info-am \
 	info-am install install-am install-data install-data-am \
 	install-dvi install-dvi-am install-exec install-exec-am \
 	install-html install-html-am install-info install-info-am \
-	install-man install-nobase_goDATA install-nobase_scmDATA \
-	install-pdf install-pdf-am install-ps install-ps-am \
-	install-strip installcheck installcheck-am installdirs \
-	maintainer-clean maintainer-clean-aminfo \
-	maintainer-clean-generic mostlyclean mostlyclean-aminfo \
-	mostlyclean-generic pdf pdf-am ps ps-am tags-am uninstall \
-	uninstall-am uninstall-dvi-am uninstall-html-am \
-	uninstall-info-am uninstall-nobase_goDATA \
-	uninstall-nobase_scmDATA uninstall-pdf-am uninstall-ps-am
+	install-man install-nobase_goDATA install-pdf install-pdf-am \
+	install-ps install-ps-am install-strip installcheck \
+	installcheck-am installdirs maintainer-clean \
+	maintainer-clean-aminfo maintainer-clean-generic mostlyclean \
+	mostlyclean-aminfo mostlyclean-generic pdf pdf-am ps ps-am \
+	tags-am uninstall uninstall-am uninstall-dvi-am \
+	uninstall-html-am uninstall-info-am uninstall-nobase_goDATA \
+	uninstall-pdf-am uninstall-ps-am
 
 
-%.go : %.xml language/xml-xcb/compile-scheme.scm
+%.go : %.xml language/xml-xcb/compile-scheme.go
 	GUILE_FLAGS="-C ${CURDIR}" @GUILE_TOOLS@ compile $< --from=xml-xcb --output=$@
+
+%.go : %.scm
+	GUILE_FLAGS="-C ${CURDIR}" @GUILE_TOOLS@ compile $< --output=$@
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
