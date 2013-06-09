@@ -12,6 +12,10 @@
                xcb-listen!
                xcb-connection-display
                xcb-unlisten!
+               xcb-event-unlisten-default!
+               xcb-error-unlisten-default!
+               xcb-event-listen-default!
+               xcb-error-listen-default!
                xcb-await
                xcb-now
                xcb-later

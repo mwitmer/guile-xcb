@@ -1,5 +1,20 @@
 #!/home/mark/build/guile-2.0/bin/guile
 !#
+ ;; This file is part of Guile XCB.
+
+ ;;    Guile XCB is free software: you can redistribute it and/or modify
+ ;;    it under the terms of the GNU General Public License as published by
+ ;;    the Free Software Foundation, either version 3 of the License, or
+ ;;    (at your option) any later version.
+
+ ;;    Guile XCB is distributed in the hope that it will be useful,
+ ;;    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ ;;    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ ;;    GNU General Public License for more details.
+
+ ;;    You should have received a copy of the GNU General Public License
+ ;;    along with Guile XCB.  If not, see <http://www.gnu.org/licenses/>.
+
 (define-module (xcb xml sample tinywm)
   #:use-module (system repl server)
   #:use-module (xcb xml xproto)
@@ -34,8 +49,6 @@
   (xcb-await ((pointer (QueryPointer xcb-conn root))
               (geom (GetGeometry xcb-conn (win))))
     (define (new-coord p g s) (if (> (+ p g) s) (- s g) p))
-    (display pointer) (newline)
-    (display geom) (newline)
     (if (eq? (action) 'move)
         (ConfigureWindow 
          xcb-conn (win) ConfigWindow
@@ -69,8 +82,8 @@
       (action 'resize)
       (WarpPointer 
        xcb-conn (xcb-none WINDOW) (win) 0 0 0 0 
-       (GetGeometry-geom-get-width geom)
-       (GetGeometry-geom-get-height geom))))
+       (GetGeometry-reply-get-width geom)
+       (GetGeometry-reply-get-height geom))))
     (GrabPointer
      xcb-conn #f root '(ButtonRelease ButtonMotion PointerMotionHint)
      'Async 'Async root (xcb-none CURSOR) xcb-current-time)))
@@ -88,6 +101,8 @@
 (xcb-listen! xcb-conn ButtonRelease on-button-release #t)
 (xcb-listen! xcb-conn ButtonPress on-button-press #t)
 (xcb-listen! xcb-conn KeyPress on-key-press #t)
+(xcb-listen! xcb-conn Drawable-error on-drawable-error #t)
+(xcb-listen! xcb-conn Window-error on-window-error #t)
 
 (spawn-server)
 (wm-shell-command "xterm -e 'telnet localhost 37146'")

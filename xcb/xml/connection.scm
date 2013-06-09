@@ -36,6 +36,10 @@
             poll-xcb-connection
 	    get-event-hook
 	    get-error-hook
+            xcb-event-unlisten-default!
+            xcb-error-unlisten-default!
+            xcb-event-listen-default!
+            xcb-error-listen-default!
             xcb-listen!
             xcb-unlisten!
             xcb-await
@@ -64,6 +68,8 @@
    error-hooks
    events
    errors
+   default-error-hook 
+   default-event-hook
    display)
   xcb-connection?
   (input-port xcb-connection-input-port)
@@ -81,6 +87,8 @@
   (maximum-request-length maximum-request-length set-maximum-request-length!)
   (events all-events)
   (errors all-errors)
+  (default-error-hook default-error-hook)
+  (default-event-hook default-event-hook)
   (xc-misc-enabled? xc-misc-enabled? set-xc-misc-enabled!)
   (display xcb-connection-display))
 
@@ -159,6 +167,8 @@ received."
    (make-hash-table)
    (make-hash-table)
    (make-hash-table)
+   (make-hook 1)
+   (make-hook 1)
    display))
 
 (define-public (xcb-connected? xcb-conn)
@@ -257,6 +267,26 @@ received."
         (else (error "xcb-xml: xcb connection cannot \
 listen for given struct" struct))))
 
+(define* (xcb-error-listen-default! xcb-conn proc #:optional replace?)
+  (define error-hook (default-error-hook xcb-conn))
+  (if replace? (reset-hook! error-hook))
+  (add-hook! error-hook proc))
+
+(define* (xcb-event-listen-default! xcb-conn proc #:optional replace?)
+  (define event-hook (default-event-hook xcb-conn))
+  (if replace? (reset-hook! event-hook))
+  (add-hook! event-hook proc))
+
+(define* (xcb-error-unlisten-default! xcb-conn #:optional proc)
+  (define error-hook (default-error-hook xcb-conn))
+  (if proc (remove-hook! error-hook proc)
+      (reset-hook! error-hook)))
+
+(define* (xcb-event-unlisten-default! xcb-conn #:optional proc)
+  (define event-hook (default-event-hook xcb-conn))
+  (if proc (remove-hook! event-hook proc)
+      (reset-hook! event-hook)))
+
 (define* (xcb-listen! xcb-conn struct proc #:optional replace?)
   (define hook-map (xcb-hook-map-for-struct xcb-conn struct))
   (define hook
@@ -292,7 +322,8 @@ listen for given struct" struct))))
    (if (not event-struct) 
        #f (xcb-struct-unpack-from-bytevector event-struct bv)))
   (lambda ()
-    (if event-hook (run-hook event-hook event-data))
+    (if event-hook (run-hook event-hook event-data)
+        (run-hook (default-event-hook xcb-conn) event-data))
     event-data))
 
 (define (read-error xcb-conn port)
@@ -304,7 +335,8 @@ listen for given struct" struct))))
    (if (not error-struct) 
        #f (xcb-struct-unpack-from-bytevector error-struct bv)))
   (lambda ()
-    (if error-hook (run-hook error-hook error-data)) 
+    (if error-hook (run-hook error-hook error-data)
+        (run-hook (default-error-hook xcb-conn) error-data)) 
     error-data))
 
 (define* (poll-xcb-connection xcb-conn #:optional async?)

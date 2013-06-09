@@ -1,4 +1,11 @@
-guile-xcb was written by Mark Witmer (mark@markwitmer.com)
+Guile XCB:
+        Copyright (c) 2013 Mark Witmer (mark@markwitmer.com)
 
-XML-XCB was written by various authors; consult the invidiual XML-XCB
-files included with this package for more info.
+XML-XCB:
+        XML-XCB was written by various authors; consult the invidiual XML-XCB
+        files included with this package for more info.
+
+srfi-64:
+        Copyright (c) 2012 Sunjoong Lee
+        Copyright (c) 2005, 2006, 2007 Per Bothner
+
