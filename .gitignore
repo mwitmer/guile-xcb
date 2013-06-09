@@ -1,0 +1,4 @@
+*.go
+autom4te.cache/*
+*.log
+/guile-xcb.info
