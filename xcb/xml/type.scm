@@ -7,7 +7,7 @@
   #:use-module (srfi srfi-9 gnu)
   #:use-module (xcb xml enum)
   #:use-module (xcb xml records)
-  #:export (list-type mock-new-xid))
+  #:export (list-type mock-new-xid typed-value-pack typed-value-unpack))
 
 ;; Some xcb structs are a little too optimistic about how many bytes
 ;; they expect to read from the server. Rather than keeping track of
@@ -30,6 +30,18 @@
   ((xcb-type-pack (typed-value-type value))
    port
    (typed-value-value value)))
+
+(define-public (typed-value-value-or-enum typed-val)
+  (define value (typed-value-value typed-val))
+  (define type (typed-value-type typed-val))
+  (define (enum-lookup enum) (or (xcb-enum-key-get enum value) value))
+  (define (mask-lookup mask)
+    (define (mask-lookup key bit) (if (> (logand value bit) 0) key #f))
+    (delq #f (hash-map->list mask-lookup (key-value-hash mask))))
+  (cond
+   ((xcb-type-enum type) => enum-lookup)
+   ((xcb-type-mask type) => mask-lookup)
+   (else value)))
 
 (define (typed-value-unpack type port)
   (define result ((xcb-type-unpack type)

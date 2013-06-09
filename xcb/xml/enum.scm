@@ -16,5 +16,5 @@
 (define-public (xcb-enum-key-get enum val)
   (hashq-ref (value-key-hash enum) val))
 
-(define-public (xcb-enum-or enum . values)
-  (apply logior (map (lambda (value) (xcb-enum-get enum value)) values)))
+(define-public (xcb-enum-or enum . keys)
+  (apply logior (map (lambda (value) (xcb-enum-get enum value)) keys)))

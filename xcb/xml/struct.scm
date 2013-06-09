@@ -11,8 +11,7 @@
   #:use-module (xcb xml records)
   #:use-module (xcb xml enum)
   #:use-module ((rnrs base) #:select (vector-for-each vector-map))
-  #:export (define-xcb-struct clone-xcb-struct 
-             xcb-struct-field-specifier))
+  #:export (define-xcb-struct clone-xcb-struct xcb-struct-field-specifier))
 
 (define-public (resolve-type type mask enum require-enum?)
   (define base-type
@@ -277,92 +276,43 @@ as an xcb list type" value))
   (record-predicate (inner-type xcb-struct)))
 
 (define (xcb-struct-accessor xcb-struct field-tag)
+  (define (maybe-unbox val) 
+    (define opaque? (xcb-type-opaque? (typed-value-type val)))
+    (if opaque? val (typed-value-value-or-enum val)))
   (lambda (rec)
     (define value ((record-accessor (inner-type xcb-struct) field-tag) rec))
-    (cond 
-     ((vector? value) value)
-     ((xcb-type-opaque? (typed-value-type value)) value)
-     (else (typed-value-value value)))))
+    (if (vector? value) (vector-map maybe-unbox value) (maybe-unbox value))))
 
 (define* ((xcb-struct-vector-accessor xcb-struct field-tag) rec #:optional n)
   (define vec ((xcb-struct-accessor xcb-struct field-tag) rec))
-  (define (access-index n)
-    (define value (vector-ref vec n))
-    (if (xcb-type-opaque? 
-         (typed-value-type value)) value (typed-value-value value)))
-  (if n (access-index n) vec))
-
-(define (xcb-struct-mask-value xcb-struct field-tag original arg t-or-f)
-  (define mask (xcb-type-mask (hashq-ref (types xcb-struct) field-tag)))
-  (define (value-for-symbol arg) (xcb-enum-get mask arg))
-  (with-bit-set 
-   original 
-   (apply logior (map value-for-symbol (if (list? arg) arg (list arg))))
-   t-or-f))
-
-(define (xcb-struct-vector-mask-modify xcb-struct field-tag rec n arg t-or-f)
-  (define current ((xcb-struct-vector-accessor xcb-struct field-tag) rec n))
-  (define xcb-type (hashq-ref (types xcb-struct) field-tag))
-  (vector-set! 
-   ((xcb-struct-accessor xcb-struct field-tag) rec) n
-   (make-typed-value 
-    (xcb-struct-mask-value xcb-struct field-tag current arg t-or-f)
-    xcb-type)))
+  (if n (vector-ref vec n) vec))
 
 (define (xcb-maybe-get-from-enum xcb-type arg)
-  "Return either ARG or, if XCB-TYPE has an enum, a value from
-XCB-TYPE's enum with name ARG. If no enum value is found for ARG,
-return ARG if the enum is not required by the type, or throw an error
-if it is."
-  (cond
-   ((and (xcb-type-mask xcb-type) (list? arg))
-    (apply xcb-enum-or (xcb-type-mask xcb-type) arg))
-   ((xcb-type-enum xcb-type)
-    (or (xcb-enum-get (xcb-type-enum xcb-type) arg)
+  (define (mask-or mask) (apply xcb-enum-or mask arg))
+  (define (enum-get enum) 
+    (or (xcb-enum-get enum arg)
         (if (xcb-type-require-enum? xcb-type)
             (error "xcb-xml: No enum value with name " arg)
             arg)))
+  (cond
+   ((xcb-type-mask xcb-type) => mask-or)
+   ((xcb-type-enum xcb-type) => enum-get)
    (else arg)))
 
-(define (xcb-struct-vector-nonmask-modify xcb-struct field-tag rec n arg)
-  (define xcb-type (hashq-ref (types xcb-struct) field-tag))
-  (vector-set! ((xcb-struct-accessor xcb-struct field-tag) rec) n 
-               (type-wrap arg xcb-type)))
-
-(define* ((xcb-struct-vector-modifier xcb-struct field-tag) 
-         rec n #:optional arg (t-or-f *unspecified*))
-  (if (not arg)
-      ((record-modifier (inner-type xcb-struct) field-tag) rec n)
-      (if (and (not (eq? t-or-f *unspecified*))
-               (xcb-type-mask (hashq-ref (types xcb-struct) field-tag)))
-          (xcb-struct-vector-mask-modify xcb-struct field-tag rec n arg t-or-f)
-          (xcb-struct-vector-nonmask-modify xcb-struct field-tag rec n arg))))
-
-(define (with-bit-set n bit val)
-  (if val (logior n bit) (logand n (lognot bit))))
-
-(define (xcb-struct-mask-modify xcb-struct field-tag rec arg t-or-f)
-  ((record-modifier (inner-type xcb-struct) field-tag) rec
-   (typecheck 
-    (make-typed-value
-     (xcb-struct-mask-value 
-      xcb-struct field-tag 
-      ((xcb-struct-accessor xcb-struct field-tag) rec) arg t-or-f)
-     (hashq-ref (types xcb-struct) field-tag)))))
-
-(define (xcb-struct-nonmask-modify xcb-struct field-tag rec arg)
-  (define xcb-type (hashq-ref (types xcb-struct) field-tag))
-  ((record-modifier (inner-type xcb-struct) field-tag) rec
-   (type-wrap arg xcb-type)))
-
-(define* ((xcb-struct-modifier xcb-struct field-tag) 
-          rec arg #:optional (t-or-f *unspecified*))
+(define* ((xcb-struct-modifier xcb-struct field-tag) rec arg)
   "Returns a proc that modifies the value of field FIELD-TAG in an instance
 of XCB-STRUCT"
-  (if (and (not (eq? t-or-f *unspecified*)) 
-           (xcb-type-mask (hashq-ref (types xcb-struct) field-tag)))
-      (xcb-struct-mask-modify xcb-struct field-tag rec arg t-or-f)
-      (xcb-struct-nonmask-modify xcb-struct field-tag rec arg)))
+  (define xcb-type (hashq-ref (types xcb-struct) field-tag))
+  (define modifier (record-modifier (inner-type xcb-struct) field-tag))
+  (modifier rec (type-wrap arg xcb-type)))
+
+(define* ((xcb-struct-vector-modifier xcb-struct field-tag)
+          rec n #:optional arg)
+  (define xcb-type (hashq-ref (types xcb-struct) field-tag))
+  (define modifier (record-modifier (inner-type xcb-struct) field-tag))
+  (define accessor (record-accessor (inner-type xcb-struct) field-tag))
+  (if (not arg) (modifier rec n) 
+      (vector-set! (accessor rec) n (type-wrap arg xcb-type))))
 
 (define (check-list-length xcb-struct rec field value alist)
   (define list-length (cadddr field))
@@ -434,17 +384,17 @@ of XCB-STRUCT"
     (modifier rec (vector-ec (: i 0 size) (unpack-value field-type))))
   (define field-name (car field))
   (define field-type (cadr field))
+  (define (modify-or-return)
+    (define modifier 
+      (if modify? (record-modifier (inner-type xcb-struct) field-name)
+          (lambda (rec a) a)))
+    (if (eq? (caddr field) '*list*)
+        (unpack-list field-name field-type modifier)
+        (modifier rec (unpack-value field-type))))
   (cond
    ((eq? field-name '*pad*) (skip-pad-bytes field-type))
    ((eq? (caddr field) '*expr*) #f)
-   (else
-    (let ((modifier 
-           (if modify?
-               (record-modifier (inner-type xcb-struct) field-name)
-               (lambda (rec a) a))))
-      (if (eq? (caddr field) '*list*) 
-          (unpack-list field-name field-type modifier)
-          (modifier rec (unpack-value field-type)))))))
+   (else (modify-or-return))))
 
 (define-public (xcb-struct-unpack xcb-struct port)
   (define rec ((record-constructor (inner-type xcb-struct) '())))

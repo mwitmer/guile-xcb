@@ -8,7 +8,6 @@
   #:export (xcb-case-expression-expression
             xcb-case-expression-fields
             xcb-case-expression
-            define-xcb-struct 
             make-xcb-switch 
             xcb-struct?
             inner-type
@@ -16,6 +15,11 @@
             types
             switch
             make-xcb-struct
+            set-accessors!
+            set-modifiers!
+            accessors
+            modifiers
+            get-constructor-args
             field-value-expressions
             field-order
             list-length-expressions
@@ -48,8 +52,6 @@
             xcb-type-mask
             xcb-type-require-enum?
             typed-value?
-            typed-value-pack
-            typed-value-unpack
             xcb-type?
             xcb-type-size
             xcb-enum-name))

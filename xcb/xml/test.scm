@@ -9,10 +9,10 @@
   #:use-module (system base compile)
   #:use-module (language xml-xcb spec)
   #:use-module (language scheme spec)
-  #:use-module (xcb xml common)
   #:use-module (xcb xml type)
   #:use-module (xcb xml enum)
   #:use-module (xcb xml union)
+  #:use-module ((xcb xml records) #:select (make-typed-value typed-value-value))
   #:use-module (xcb xml connection)
   #:use-module (xcb xml struct))
 
@@ -424,14 +424,14 @@
 	    VISUALTYPE-type))
 
 (let ((my-visualtype (make-VISUALTYPE 3 'StaticColor 3 3 3 3 3)))
-  (test-eqv (VISUALTYPE-get-bits_per_rgb_value my-visualtype) 3)
+  (test-eqv (VISUALTYPE-get-bits_per_rgb_value my-visualtype) 'PseudoColor)
   (VISUALTYPE-set-bits_per_rgb_value! my-visualtype 'StaticColor)
-  (test-eqv (VISUALTYPE-get-bits_per_rgb_value my-visualtype) 2)
+  (test-eqv (VISUALTYPE-get-bits_per_rgb_value my-visualtype) 'StaticColor)
   (VISUALTYPE-set-bits_per_rgb_value! my-visualtype 8)
   (test-eqv (VISUALTYPE-get-bits_per_rgb_value my-visualtype) 8))
 
 (let ((my-visualtype (make-VISUALTYPE 3 'StaticColor 'PseudoColor 3 3 3 3)))
-  (test-eqv (VISUALTYPE-get-bits_per_rgb_value my-visualtype) 3))
+  (test-eqv (VISUALTYPE-get-bits_per_rgb_value my-visualtype) 'PseudoColor))
 
 (let ((my-depth (make-DEPTH 2 1 `#(,(make-VISUALTYPE 3 'PseudoColor 3 3 3 3 3)))))
   (test-equal
@@ -460,34 +460,35 @@
     (test-eqv (DEPTH-get-depth my-depth) 2)
     (let ((visual (DEPTH-get-visuals my-depth 0)))
       (test-eqv (VISUALTYPE-get-green_mask visual) 3)
-      (test-eqv (VISUALTYPE-get-class visual) 3))))
+      (test-eqv (VISUALTYPE-get-class visual) 'PseudoColor))))
 
-(let ((my-maskstruct (make-MASKSTRUCT 3)))
-  (test-eqv (MASKSTRUCT-get-masked my-maskstruct) 3)
-  (MASKSTRUCT-set-masked! my-maskstruct 5)
-  (test-eqv (MASKSTRUCT-get-masked my-maskstruct) 5)
-  (MASKSTRUCT-set-masked! my-maskstruct 'Eight #t)
-  (test-eqv (MASKSTRUCT-get-masked my-maskstruct) 13)
-  (MASKSTRUCT-set-masked! my-maskstruct '(Four Eight) #f)
-  (test-eqv (MASKSTRUCT-get-masked my-maskstruct) 1)
-  (MASKSTRUCT-set-masked! my-maskstruct '(Four Sixteen) #t)
-  (test-eqv (MASKSTRUCT-get-masked my-maskstruct) 21)
-  (MASKSTRUCT-set-masked! my-maskstruct '(Four Sixteen))
-  (test-eqv (MASKSTRUCT-get-masked my-maskstruct) 20))
+(let* ((my-maskstruct (make-MASKSTRUCT '(One Two)))
+       (mask-list (MASKSTRUCT-get-masked my-maskstruct)))
+  (test-assert (memq 'One mask-list))
+  (test-assert (memq 'Two mask-list))
+  (test-eqv (length mask-list) 2)
+  (MASKSTRUCT-set-masked! my-maskstruct '(Two Four))
+  (let ((new-mask-list (MASKSTRUCT-get-masked my-maskstruct)))
+    (test-assert (memq 'Two new-mask-list))
+    (test-assert (memq 'Four new-mask-list))
+    (test-eqv (length new-mask-list) 2)))
 
-(let ((my-maskliststruct (make-MASKLISTSTRUCT 2 #(0 0))))
-  (MASKLISTSTRUCT-set-mask_list! my-maskliststruct 0 '(Four Eight) #t)
-  (test-eqv (MASKLISTSTRUCT-get-mask_list my-maskliststruct 0) 12)
-  (MASKLISTSTRUCT-set-mask_list! my-maskliststruct 0 'Eight #f)
-  (test-eqv (MASKLISTSTRUCT-get-mask_list my-maskliststruct 0) 4))
+(let ((my-maskliststruct (make-MASKLISTSTRUCT 2 #(() ()))))
+  (MASKLISTSTRUCT-set-mask_list! my-maskliststruct 0 '(Four Eight))
+  (let ((mask-list (MASKLISTSTRUCT-get-mask_list my-maskliststruct)))
+    (test-assert (memq 'Four (vector-ref mask-list 0)))
+    (test-assert (memq 'Eight (vector-ref mask-list 0)))
+    (test-eqv (length (vector-ref mask-list 0)) 2))
+  (MASKLISTSTRUCT-set-mask_list! my-maskliststruct 0 '(Eight))
+  (test-equal (MASKLISTSTRUCT-get-mask_list my-maskliststruct 0) '(Eight)))
 
 (let ((my-enumliststruct (make-ENUMLISTSTRUCT 1 #(One) 1 #(One))))
   (ENUMLISTSTRUCT-set-altenum_list! my-enumliststruct 0 'Eight)
-  (test-eqv (ENUMLISTSTRUCT-get-altenum_list my-enumliststruct 0) 8)
+  (test-eq (ENUMLISTSTRUCT-get-altenum_list my-enumliststruct 0) 'Eight)
   (ENUMLISTSTRUCT-set-altenum_list! my-enumliststruct 0 64)
-  (test-eqv (ENUMLISTSTRUCT-get-altenum_list my-enumliststruct 0) 64)
+  (test-eq (ENUMLISTSTRUCT-get-altenum_list my-enumliststruct 0) 64)
   (ENUMLISTSTRUCT-set-enum_list! my-enumliststruct 0 'Four)
-  (test-eqv (ENUMLISTSTRUCT-get-enum_list my-enumliststruct 0) 4)
+  (test-eqv (ENUMLISTSTRUCT-get-enum_list my-enumliststruct 0) 'Four)
   (test-error (ENUMLISTSTRUCT-set-enum_list! my-enumliststruct 0 8)))
 
 (receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8() 
@@ -527,6 +528,8 @@
   (newDEPTH-set-depth! my-newDEPTH 4)
   (test-eqv (newDEPTH-get-depth my-newDEPTH) 4))
 
+(define (poll-first xcb-conn) (receive (key val) (poll-xcb-connection xcb-conn) (val)))
+
 (receive (xcb-conn get-xcb-conn-result) 
     (mock-connection 
      #vu8(2 2 1 0 2 0 0 0 
@@ -535,7 +538,7 @@
             3 0 4 0 7 0 1 0
             0 0 0 0 0 0 0 0)
      xcb-events xcb-errors)
-  (let ((my-event (poll-xcb-connection xcb-conn)))
+  (let ((my-event (poll-first xcb-conn)))
     (test-eqv (KeyPress-get-detail my-event) 2)
     (test-eq (KeyPress? my-event) #t)))
 
@@ -547,7 +550,7 @@
             3 0 4 0 7 0 1 0
             0 0 0 0 0 0 0 0)
      xcb-events xcb-errors)
-  (let ((my-event (poll-xcb-connection xcb-conn)))
+  (let ((my-event (poll-first xcb-conn)))
     (test-eqv (KeyRelease-get-detail my-event) 2)
     (test-eqv (KeyRelease-get-sequence_number my-event) 2)
     (test-eq (KeyRelease? my-event) #t)))
@@ -560,7 +563,7 @@
             0 0 0 0 0 0 0 0
             0 0 0 0 0 0 0 0)
      xcb-events xcb-errors)
-  (let* ((my-event (poll-xcb-connection xcb-conn))
+  (let* ((my-event (poll-first xcb-conn))
 	 (my-client-message-data (ClientMessageTest-get-data my-event))
 	 (data8-vec (xcb-union-get ClientMessageData my-client-message-data 'data8))
 	 (data16-vec (xcb-union-get ClientMessageData my-client-message-data 'data16))
@@ -582,8 +585,8 @@
             3 0 4 0 7 0 1 0
             0 0 0 0 0 0 0 0)
      xcb-events xcb-errors)
-  (let ((my-error (poll-xcb-connection xcb-conn))
-	(my-event (poll-xcb-connection xcb-conn)))
+  (let ((my-error (poll-first xcb-conn))
+	(my-event (poll-first xcb-conn)))
     (test-eqv (Value-error-get-bad_value my-error) 10)
     (test-eqv (KeyRelease-get-detail my-event) 2)
     (test-eqv (KeyRelease-get-sequence_number my-event) 2)
@@ -616,17 +619,17 @@
     (add-hook!
      (QueryTextExtents xcb-conn (mock-new-xid FONT #t) (string->xcb-char2b-vector "Test"))
      (lambda (reply)
-       (test-eqv (QueryTextExtents-reply-get-draw_direction reply) 0)
+       (test-eqv (QueryTextExtents-reply-get-draw_direction reply) 'LeftToRight)
        (set! callback-reached? #t)))
-    (poll-xcb-connection xcb-conn)
+    (poll-first xcb-conn)
     (test-eq callback-reached? #t))
   (let ((callback-reached? #f))
     (add-hook!
      (QueryTextExtents xcb-conn (mock-new-xid FONT #t) (string->xcb-char2b-vector "Test"))
      (lambda (reply)
-       (test-eqv (QueryTextExtents-reply-get-draw_direction reply) 1)
+       (test-eqv (QueryTextExtents-reply-get-draw_direction reply) 'RightToLeft)
        (set! callback-reached? #t)))
-    (poll-xcb-connection xcb-conn)
+    (poll-first xcb-conn)
     (test-eq callback-reached? #t)))
 
 (receive (xcb-conn get-xcb-conn-result)
@@ -657,7 +660,7 @@
        (test-eqv (GetImage-reply-get-data reply 5) 6)
        (test-eqv (GetImage-reply-get-data reply 15) 6)
        (set! callback-reached? #t)))
-   (poll-xcb-connection xcb-conn)
+   (poll-first xcb-conn)
    (test-eq callback-reached? #t))
   (let ((callback-reached? #f))
     (add-hook!
@@ -666,7 +669,7 @@
        (test-eqv (GetImage-reply-get-data reply 5) 6)
        (test-eqv (GetImage-reply-get-data reply 15) 9)
        (set! callback-reached? #t)))
-   (poll-xcb-connection xcb-conn)
+   (poll-first xcb-conn)
    (test-eq callback-reached? #t)))
 (test-end "xcb-test")
 

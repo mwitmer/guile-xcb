@@ -1,7 +1,5 @@
 (define-module (xcb xml doc)
-  #:use-module (srfi srfi-2)
-  #:use-module (srfi srfi-9)
-  #:use-module (srfi srfi-9 gnu))
+  #:use-module (srfi srfi-2))
 
 (define-public (empty-xcb-doc) (make-hash-table))
 (define-public documentation (make-hash-table))
@@ -84,5 +82,3 @@
           my-documentation
           (proc my-documentation))
       (format #t "No documentation found for ~a in type ~a\n" path type)))
-
-

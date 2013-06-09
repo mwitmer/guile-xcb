@@ -4,6 +4,7 @@
   #:use-module (ice-9 binary-ports)
   #:use-module (ice-9 receive)
   #:use-module (xcb xml struct)
+  #:use-module (xcb xml records)
   #:use-module (system base compile)
   #:use-module (xcb xml type)
   #:use-module (xcb xml enum)
@@ -244,7 +245,7 @@
 
 (test-begin "xcb-switch-test")
 
-(receive (conn get-bytevector) (mock-connection #vu8())
+(receive (conn get-bytevector) (mock-connection #vu8() (make-hash-table) (make-hash-table))
   (SelectEvents conn 12 
                 '(NewKeyboardNotify)  
                 '(StateNotify) 
@@ -257,7 +258,7 @@
    (get-bytevector)
    #vu8(100 1 5 0 12 0 1 0 4 0 4 0 16 0 16 0 1 0 2 0)))
 
-(receive (conn get-bytevector) (mock-connection #vu8())
+(receive (conn get-bytevector) (mock-connection #vu8() (make-hash-table) (make-hash-table))
   (SelectEvents conn 12 
                 '(NewKeyboardNotify ControlsNotify)  
                 '(StateNotify) 
@@ -277,7 +278,8 @@
 (receive (conn get-bytevector) (mock-connection #vu8(1 1 1 0 1 0 0 0
                                                      4 0 0 0 0 0 1 0 2 0 3 0
                                                      4 0 0 0 0 0 0 0
-                                                     0 0 0 0 0 0 0 0))
+                                                     0 0 0 0 0 0 0 0)
+                                                (make-hash-table) (make-hash-table))
   (add-hook!
    (SwitchInReply conn 12 24)
    (lambda (reply) 
@@ -289,7 +291,8 @@
 (receive (conn get-bytevector) (mock-connection #vu8(1 3 1 0 1 0 0 0
                                                      4 0 0 0 0 0 2 0 4 0 6 0
                                                      8 0 12 0 0 0 0 0
-                                                     0 0 0 0 0 0 0 0))
+                                                     0 0 0 0 0 0 0 0)
+                                                (make-hash-table) (make-hash-table))
   (add-hook!
    (SwitchInReply conn 12 24)
    (lambda (reply) 
@@ -302,7 +305,8 @@
 (receive (conn get-bytevector) (mock-connection #vu8(1 0 1 0 0 0 0 0
                                                      4 0 0 0 0 0 0 0
                                                      0 0 0 0 0 0 0 0
-                                                     0 0 0 0 0 0 0 0))
+                                                     0 0 0 0 0 0 0 0)
+                                                (make-hash-table) (make-hash-table))
   (add-hook!
    (SwitchInReply conn 12 24)
    (lambda (reply) 

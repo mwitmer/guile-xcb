@@ -1,63 +1,34 @@
 #+TITLE: guile-xcb
 #+AUTHOR: Mark Witmer
 #+DESCRIPTION: A Guile implementation of the X protocol using xml/xcb
-#+TODO: TODO(t) IN_PROGRESS(p) | DONE(d)
 
 * Overview
 
 guile-xcb is a client-side implementation of the X protocol written
-entirely in Guile. It makes use of the Guile compilation
-infrastructure and virtual machine to parse and compile the xml
-descriptions of the X protocol provided by the xcb project into Guile
-object code files, which can be loaded as modules into a running guile
-process.
+entirely in Guile. It makes use of the Guile compiler and virtual
+machine to turn xml descriptions of the X protocol provided by the xcb
+project into Guile object code files. These files can be loaded into a
+process as conventional modules.
 
-Currently only the core X protocol is supported; support for
-extensions should hopefully arrive soon.
+Support is included for the core X protocol as well as many of its
+extensions.
 
-* Documentation
+* Samples and Documentation
 
-To use the core X protocol, include the module (xcb xml xproto) in
-your code. Helper methods are found in (xcb xml) and include the
-following:
+Samples using guile-xcb can be found in the xcb/xml/samples
+directory. They include:
 
-** Helper Methods
-- xcb-connect!
-- xcb-disconnect!
-- xcb-connection-setup
-- typed-value-value
-- typed-value-type
-- make-new-xid
-- poll-xcb-connection
-- xcb-enum-get
-- document-full
-- document brief
+- tinywm.scm: A guile-xcb implementation of tinywm
+- win.scm: A simple demonstration of creating a window and receiving
+  events
+- randr.scm: Examine the physical displays the X server knows about
+  and the virtual screens mapped to them
 
-More information aboue each method can be found in their docstrings
-and accessed by typing ",describe <func-name>" at the repl.
-
-** Sending Requests
-
-Every request defined in xcb for the core X protocol has a
-corresponding function in (xcb xml xproto) with the same name. The
-arguments match the list of arguments found in the X specification.
+More detailed documentation resides in the texinfo manual included in
+this distribution.
 
 * Author
 
 Mark Witmer is the author of this library. You can contact him at
 [[mark@markwitmer.com]].
 
-* Status
-
-** DONE Parse xml files using sxml-match
-** DONE Extract documentation and make it interactively browseable
-** DONE Add typechecking for fields sent to and from the X server
-** DONE Define structures with fields, lists, and padding
-   CLOSED: [2013-05-19 Sun 21:02]
-** DONE Implement packing/unpacking structures to binary representation
-   CLOSED: [2013-05-19 Sun 21:02]
-** DONE Connect to/disconnect from X server
-   CLOSED: [2013-05-19 Sun 21:02]
-** DONE Send/receive requests, replies, and events
-   CLOSED: [2013-05-19 Sun 21:02]
-** TODO Extend core functionality to make use of X extensions

@@ -560,8 +560,7 @@
          (lambda (valuemask valuelist)
            (xcb-connection-send 
             xcb-conn 
-            (if in-extension? 
-                (get-extension-opcode) ,(parse-dec-or-hex-integer opcode))
+            (if in-extension? extension-opcode ,(parse-dec-or-hex-integer opcode))
             (if in-extension? ,(parse-dec-or-hex-integer opcode) #f)
             (xcb-struct-pack-to-bytevector
              ,request-struct-name
@@ -590,6 +589,9 @@
          (list
           (symbol-append name-sym '-get- field-name)
           (symbol-append name-sym '-set- field-name '!))))))
+
+ (define (enable-extension-procname header-symbol)
+  ((symbol-prefix-proc ((symbol-prefix-proc 'xcb-enable-) header-symbol)) '!))
 
 (define (top-level-match exp env)
   (sxml-match exp
@@ -774,9 +776,10 @@
 			  (item-creator (cdr items) (1+ next-value)))))
 		   '())))
 	(if (= (length doc) 1)
-	    `(register-documentation xcbdoc
-				     'enum ,name 
-				     ,(element-syntax-documentation-syntax (car doc)))
+	    `(register-documentation 
+              xcbdoc
+              'enum ,name 
+              ,(element-syntax-documentation-syntax (car doc)))
 	    #f))))
     ((typedef (@ (oldname ,oldname)
 		 (newname ,newname)))
@@ -847,15 +850,27 @@
                  (xcb xml doc)
                  (language xml-xcb support)
                  ,@(if (not (eq? header-symbol 'xproto)) 
-                       '((xcb xml xproto)) '()))
-                (define extension-opcode #f)
-                (define-public xcb-events (make-hash-table))
-                (define-public xcb-errors (make-hash-table))
-                (define-public (get-extension-opcode) extension-opcode)
-                (define-public (set-extension-opcode! opcode) 
-                   (set! extension-opcode opcode))
-                (define in-extension? ,(if (eq? header-symbol 'xproto) #f #t)))
-             '(define xcbdoc (empty-xcb-doc)))))
+                       '((xcb xml xproto)
+                         (xcb xml ext-support)) '()))
+                (define extension-opcode #f)                
+                (define xcb-events (make-hash-table))
+                (define xcb-errors (make-hash-table))
+                (define (set-extension-opcode! opcode) (set! extension-opcode opcode))
+                (define in-extension? ,(if (eq? header-symbol 'xproto) #f #t))
+                (define* (,(enable-extension-procname header-symbol) xcb-conn #:optional proc)
+                  ,(if (eq? header-symbol 'xproto)
+                       '(begin
+                          (xcb-connection-register-events xcb-conn xcb-events 0)
+                          (xcb-connection-register-errors xcb-conn xcb-errors 0))
+                       `(enable-extension 
+                         xcb-conn ,extension-xname
+                         set-extension-opcode!
+                         xcb-events xcb-errors
+                         proc)))
+                (export ,(enable-extension-procname header-symbol)))
+             `(begin
+                (define xcbdoc (empty-xcb-doc))
+                (register-xcb-documentation (quote ,header-symbol) xcbdoc)))))
     ((union (@ (name ,name))
 	    ,[(combine-matchers
 	       switch-match

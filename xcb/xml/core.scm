@@ -6,6 +6,7 @@
   #:use-module (xcb xml type)
   #:use-module (xcb xml enum)
   #:use-module (xcb xml xproto)
+  #:use-module ((xcb xml records) #:select (make-typed-value))
   #:use-module ((xcb xml ext bigreq) #:renamer (symbol-prefix-proc 'bigreq:))
   #:use-module ((xcb xml ext xc_misc) #:renamer (symbol-prefix-proc 'xc-misc:))
   #:export (enable-extension))
@@ -37,10 +38,10 @@
         (string->list str))))
 
 (define-public (xcb->string str)
-  (apply string (vector->list (vector-map typed-value-value str))))
+  (apply string (vector->list str)))
 
 (define-public (xcb-bytes->string str)
-  (apply string (map integer->char (vector->list (vector-map typed-value-value str)))))
+  (apply string (map integer->char (vector->list str))))
 
 (define-public (string->xcb2b str)
   (let ((str-bv (string->utf16 str (native-endianness))))
@@ -53,8 +54,6 @@
       '() (iota (string-length str) 0 2)))))
 
 (define-public (next-xid-value xcb-conn)
-  (if (update-xid-range-promise)
-      (force (update-xid-range-promise)))
   (let* ((setup (xcb-connection-setup xcb-conn))
          (base (Setup-get-resource_id_base setup))
          (mask (Setup-get-resource_id_mask setup))
@@ -64,52 +63,35 @@
           (if (> (+ last-xid inc) mask)
               (begin
                 (enable-xc-misc xcb-conn)
-                (if (xc-misc-enabled? xcb-conn)
-                    (update-xid-range! xcb-conn inc)
+                (if (xc-misc-enabled? xcb-conn) (update-xid-range! xcb-conn inc)
                     (error "xml-xcb: Not more xids available!")))
               (+ last-xid inc))))
-    (if (= (xcb-connection-last-xid xcb-conn) last-xid)
-        (set-xcb-connection-last-xid! xcb-conn current-xid))
+    (set-xcb-connection-last-xid! xcb-conn current-xid)
     (logior current-xid base)))
 
 (define-public (make-new-xid xcb-conn xcb-type)
   (make-typed-value (next-xid-value xcb-conn) xcb-type))
 
-(define xc-misc-promise (make-parameter #f))
-
-(define update-xid-range-promise (make-parameter #f))
 (define (update-xid-range! xcb-conn inc)
-  (update-xid-range-promise
-   (xcb-await ((range (xc-misc:GetXIDRange xcb-conn)))
-     (let ((xid-count (xc-misc:GetXIDRange-reply-get-count range))
-           (xid-start (xc-misc:GetXIDRange-reply-get-start_id range))
-           (setup (xcb-connection-setup xcb-conn)))
-       (if (and (= xid-start 0) (= xid-count 1))
-           (error "xml-xcb: Not more xids available!"))
-       (set-xcb-connection-last-xid! xcb-conn xid-start)
-       (Setup-set-resource_id_mask! 
-        setup (* (+ xid-start (- xid-count 1)) inc))
-       (update-xid-range-promise #f)
-       xid-start)))
-  (force (update-xid-range-promise)))
+  (xcb-await ((range (xc-misc:GetXIDRange xcb-conn)))
+    (let ((xid-count (xc-misc:GetXIDRange-reply-get-count range))
+          (xid-start (xc-misc:GetXIDRange-reply-get-start_id range))
+          (setup (xcb-connection-setup xcb-conn)))
+      (if (and (= xid-start 0) (= xid-count 1))
+          (error "xml-xcb: Not more xids available!"))
+      (set-xcb-connection-last-xid! xcb-conn xid-start)
+      (Setup-set-resource_id_mask! 
+       setup (* (+ xid-start (- xid-count 1)) inc))
+      xid-start)))
 
-(define-public (enable-xc-misc xcb-conn) 
-  (or (xc-misc-promise) 
-      (xc-misc-promise
-       (xcb-await ((q (QueryExtension xcb-conn 7 (string->xcb "XC-MISC"))))
-         (define present? (QueryExtension-reply-get-present q))
-         (xc-misc:set-extension-opcode! 
-          (QueryExtension-reply-get-major_opcode q))
-         (xc-misc-promise #f)
-         (set-xc-misc-enabled! xcb-conn present?))))
-  (force (xc-misc-promise)))
+(define-public (enable-xc-misc xcb-conn)
+  (xc-misc:xcb-enable-xc_misc! 
+   xcb-conn
+   (lambda (reply) (set-xc-misc-enabled! xcb-conn #t))))
 
 (define-public (enable-big-requests xcb-conn)
-  (enable-extension 
-   xcb-conn "BIG-REQUESTS" 
-   bigreq:set-extension-opcode! 
-   bigreq:xcb-events
-   bigreq:xcb-errors 
+  (bigreq:xcb-enable-bigreq! 
+   xcb-conn
    (lambda (reply)
      (xcb-await ((enable (bigreq:Enable xcb-conn)))
        (define setup (xcb-connection-setup xcb-conn))
@@ -118,14 +100,3 @@
         xcb-conn
         (bigreq:Enable-reply-get-maximum_request_length enable))))))
 
-(define* (enable-extension xcb-conn name set-opcode! events errors #:optional proc)
-  (xcb-await ((reply (QueryExtension 
-                      xcb-conn (string-length name) (string->xcb name))))
-    (if (QueryExtension-reply-get-present reply)
-        (begin
-          (let ((opcode (QueryExtension-reply-get-major_opcode reply)))
-            (set-opcode! opcode)
-            (xcb-connection-register-events xcb-conn events opcode)
-            (xcb-connection-register-errors xcb-conn errors opcode)
-            (if proc (proc reply) #t)))
-        #f)))

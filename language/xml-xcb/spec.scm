@@ -4,8 +4,6 @@
   #:use-module (system base language)
   #:export (xml-xcb))
 
-;; (xcb xml struct) and (xcb xml union) contain the macros we need
-;; during compilation
 (define (make-default-environment)
   (let ((m (make-fresh-user-module)))
     (module-use! m (resolve-interface '(xcb xml struct)))
@@ -29,13 +27,13 @@
    (index-of (car el2) element-precedence)))
 
 ;; The reader is a bit odd because trying to compile an entire xml-xcb
-;; file in one pass can easily cause a stack overflow. So the reader
-;; actually reads the whole file with xml->sxml on the first call and
-;; returns only the parent tag with its children stripped out. It then
-;; sorts the children so that they are evaluated in the right order
-;; (imports and typedefs first, structs, then requests, etc.) and
-;; returns them one at a time on subsequent calls until they run out,
-;; at which point it finally returns #<eof>.
+;; file in one pass can cause a stack overflow. So the reader actually
+;; reads the whole file with xml->sxml on the first call and returns
+;; only the parent tag with its children stripped out. It then sorts
+;; the children so that they are evaluated in the right order (imports
+;; and typedefs first, structs, then requests, etc.) and returns them
+;; one at a time on subsequent calls until they run out, at which
+;; point it finally returns #<eof>.
 (define custom-read
   (let ((xml #f))
     (lambda (port env) 
