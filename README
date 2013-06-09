@@ -1,0 +1,61 @@
+                         _____________________
+
+                               GUILE-XCB
+
+                              Mark Witmer
+                          mark@markwitmer.com
+                         _____________________
+
+
+Table of Contents
+_________________
+
+1 Overview
+2 Samples and Documentation
+3 Project Status
+
+
+
+
+
+1 Overview
+==========
+
+  Guile XCB is an X client library written entirely in Guile. It makes
+  use of the Guile compiler and virtual machine to turn XML descriptions
+  of the X protocol provided by the XCB project into Guile object code
+  files. These files can be loaded into a process as conventional
+  modules.
+
+  Support is included for the core X protocol as well as many of its
+  extensions.
+
+
+2 Samples and Documentation
+===========================
+
+  Samples using Guile XCB can be found in the xcb/xml/samples
+  directory. They include:
+
+  - tinywm.scm: A Guile XCB implementation of tinywm
+  - win.scm: A simple demonstration of creating a window and receiving
+    events
+  - randr.scm: Examine the physical displays the X server knows about
+    and the virtual screens mapped to them
+
+  More detailed documentation resides in the texinfo manual included in
+  this distribution.
+
+
+3 Project Status
+================
+
+  - The full XCB stack is implemented; however, most of the extensions
+    haven't been tested.
+
+  - Guile XCB includes a stripped-down Scheme implementation of Xauth;
+    it doesn't pick the "best" authentication method available, just the
+    first.
+
+  - XPRINT is being excluded because it's deprecated and its XML file
+    has just enough special cases in it that it wasn't worth including.
