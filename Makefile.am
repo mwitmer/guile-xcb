@@ -27,13 +27,38 @@ ACLOCAL_AMFLAGS = -I ./m4
 SCM_SITE_CCACHE_DIR = $(GUILE_LIB_DIR)/guile/$(GUILE_EFFECTIVE_VERSION)/site-ccache
 CLEANFILES = xcb/xml/xproto.go xcb/xml/ext/*.go
 
+info_TEXINFOS = guile-xcb.texi
+
 godir = $(SCM_SITE_CCACHE_DIR)
 nobase_go_DATA =                              \
   xcb/xml/xproto.go                           \
   xcb/xml/ext/bigreq.go                       \
   xcb/xml/ext/xc_misc.go                      \
   xcb/xml/ext/render.go                       \
-  xcb/xml/ext/randr.go
+  xcb/xml/ext/randr.go                        \
+  xcb/xml/ext/dri2.go                         \
+  xcb/xml/ext/shape.go                        \
+  xcb/xml/ext/xfixes.go                       \
+  xcb/xml/ext/composite.go                    \
+  xcb/xml/ext/damage.go                       \
+  xcb/xml/ext/dpms.go                         \
+  xcb/xml/ext/ge.go                           \
+  xcb/xml/ext/glx.go                          \
+  xcb/xml/ext/record.go                       \
+  xcb/xml/ext/res.go                          \
+  xcb/xml/ext/screensaver.go                  \
+  xcb/xml/ext/shm.go                          \
+  xcb/xml/ext/sync.go                         \
+  xcb/xml/ext/xevie.go                        \
+  xcb/xml/ext/xf86dri.go                      \
+  xcb/xml/ext/xf86vidmode.go                  \
+  xcb/xml/ext/xinerama.go                     \
+  xcb/xml/ext/xinput.go                       \
+  xcb/xml/ext/xkb.go                          \
+  xcb/xml/ext/xselinux.go                     \
+  xcb/xml/ext/xtest.go                        \
+  xcb/xml/ext/xv.go                           \
+  xcb/xml/ext/xvmc.go
 
 scmdir = $(GUILE_SITE)
 nobase_scm_DATA =                             \

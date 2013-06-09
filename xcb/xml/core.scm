@@ -99,4 +99,3 @@
        (set-maximum-request-length! 
         xcb-conn
         (bigreq:Enable-reply-get-maximum_request_length enable))))))
-

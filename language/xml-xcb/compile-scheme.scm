@@ -21,27 +21,6 @@
      env
      env)))
 
-(define (false-or pred?) (lambda (exp) (or (not exp) (pred? exp))))
-
-(define (xml-boolean? value)
-  (and
-   (string? value)
-   (or (equal? (string-downcase value) "true") 
-       (equal? (string-downcase value) "false"))))
-
-(define hex-integer-regexp "^0x[0-9a-fA-F]+$")
-(define xml-integer-regexp "^[-+]?[0-9]+$")
-
-(define (xml-integer? value)
-  (if (string-match xml-integer-regexp value) #t #f))
-
-(define (dec-or-hex-integer? value)
-  (or 
-   (xml-integer? value)
-   (and
-    (string? value)
-    (if (string-match hex-integer-regexp value) #t #f))))
-
 (define element-syntax 
   (make-record-type 
    'element-syntax 
@@ -131,7 +110,7 @@
      (make-element-syntax 
       'exprfield
       `(,(string->symbol name)
-	(resolve-type ,(string->symbol type) 
+	(resolve-type ,(remove-prefix (string->symbol type)) 
 		      ,(if mask (string->symbol mask) #f) 
 		      ,(cond (enum (string->symbol enum))
 			     (altenum (string->symbol altenum))
@@ -227,7 +206,7 @@
     (,otherwise (xml-xcb-parse-error exp ignore-error?))))
 
 (define (resolve-type-syntax type mask enum altenum)
-  `(resolve-type ,(string->symbol type) 
+  `(resolve-type ,(remove-prefix (string->symbol type)) 
 		,(if mask (string->symbol mask) #f) 
 		,(cond (enum (string->symbol enum))
 		       (altenum (string->symbol altenum))
