@@ -633,8 +633,42 @@ If @var{proc} is a procedure, remove that particular procedure from
 the hook that executes when an error or event of xcb structure
 @var{struct} is received from the X server connected to
 @var{xcb-conn}. If @var{proc} is @code{#f}, clear the hook entirely.
-
 @end deffn
+
+A client can also register default handlers for errors and events that
+are not otherwise handled:
+
+@deffn{Scheme Procedure} xcb-error-listen-default! xcb-conn proc [replace?=@code{#f}] 
+
+Listen for unregistered errors from the X server connected to
+@var{xcb-conn} and execute @var{proc} when one is encountered, with
+the reply as its argument. If @var{replace?} is @code{#t}, remove all
+other procedures from the hook.
+@end deffn
+
+@deffn{Scheme Procedure} xcb-event-listen-default! xcb-conn proc [replace?=@code{#f}] 
+
+Listen for unregistered events from the X server connected to
+@var{xcb-conn} and execute @var{proc} when one is encountered, with
+the reply as its argument. If @var{replace?} is @code{#t}, remove all
+other procedures from the hook.
+@end deffn
+
+@deffn{Scheme Procedure} xcb-error-unlisten-default! xcb-conn [proc=#f]
+
+If @var{proc} is @code{#f}, remove all procedures from
+@var{xcb-conn}'s default error handler hook. If @var{proc} is a
+procedure, attempt to remove it from the hook.
+@end deffn
+
+@deffn{Scheme Procedure} xcb-event-unlisten-default! xcb-conn [proc=#f]
+
+If @var{proc} is @code{#f}, remove all procedures from
+@var{xcb-conn}'s default event handler hook. If @var{proc} is a
+procedure, attempt to remove it from the hook.
+@end deffn
+
+
 @node Using Extensions
 @section Using Extensions
 
