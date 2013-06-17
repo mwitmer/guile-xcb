@@ -12,7 +12,7 @@ _________________
 
 1 Overview
 2 Samples and Documentation
-3 Project Status
+3 Project Status and Caveats
 
 
 
@@ -47,15 +47,19 @@ _________________
   this distribution.
 
 
-3 Project Status
-================
+3 Project Status and Caveats
+============================
 
   - The full XCB stack is implemented; however, most of the extensions
     haven't been tested.
+
+  - Extensions that send huge requests, like DRI2 or glx, are probably
+    going to be way too slow for practical use. void and byte lists
+    should be represented directly as bytevectors, not regular vectors.
 
   - Guile XCB includes a stripped-down Scheme implementation of Xauth;
     it doesn't pick the "best" authentication method available, just the
     first.
 
-  - XPRINT is being excluded because it's deprecated and its XML file
-    has just enough special cases in it that it wasn't worth including.
+  - XPRINT is excluded because it's deprecated and its XML file has just
+    enough special cases in it that it wasn't worth including.

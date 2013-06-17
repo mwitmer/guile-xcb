@@ -35,15 +35,15 @@
 	  (define-xcb-union-fields field-name field-type . more) ...)))
       (define (constructor-name data)
 	((record-constructor 
-          (xcb-union-underlying-record-type xcb-union-name) '(data)) data))))))
+          (xcb-union-underlying-record-type xcb-union-name) '(xcb-union-type data)) 
+         xcb-union-name
+         data))))))
 
 (define-syntax define-xcb-union-fields
   (syntax-rules (*list*)
     ((_ field-tag xcb-type *list* list-length-expression)
      (list (quote field-tag) xcb-type '*list* list-length-expression))
-    ((_ field-tag xcb-type *list* list-length-expression accessor modifier)
-     (list (quote field-tag) xcb-type '*list* list-length-expression))
-    ((_ field-tag xcb-type accessor modifier)
+    ((_ field-tag xcb-type)
      (list (quote field-tag) xcb-type '*field* #f))))
 
 (define (make-xcb-union-for-fields name fields)
@@ -66,7 +66,7 @@
    (caar fields)
    types
    list-length-expressions
-   (make-record-type name '(data))))
+   (make-record-type name '(xcb-union-type data))))
 
 (define-public (xcb-type-for-union xcb-union)
   (make-xcb-type
@@ -110,7 +110,8 @@
     (if (xcb-type-list? test-type)
         (xcb-union-unpack-list xcb-union test-type port)
         (xcb-union-unpack-single-item xcb-union test-type port)))
-  ((record-constructor (xcb-union-underlying-record-type xcb-union) '(data)) bv))
+  ((record-constructor (xcb-union-underlying-record-type xcb-union) '(xcb-union-type data)) 
+   xcb-union bv))
 
 (define (xcb-union-read-list-data xcb-union port field type)
   (define list-length 
@@ -124,7 +125,8 @@
   (define obj ((xcb-type-unpack type) port)) 
   (make-typed-value obj type))
 
-(define-public (xcb-union-get xcb-union rec field)
+(define-public (xunion-ref rec field)
+  (define xcb-union ((record-accessor (record-type-descriptor rec) 'xcb-union-type) rec))
   (define type (hashq-ref (xcb-union-types xcb-union) field))
   (define port 
     (open-bytevector-input-port 

@@ -16,14 +16,17 @@
 (define-module (xcb xml core)
   #:use-module (srfi srfi-1)
   #:use-module (xcb xml connection)
+  #:use-module (xcb event-loop)
   #:use-module (rnrs bytevectors)
   #:use-module ((rnrs base) #:select (vector-map))
+  #:use-module ((xcb xml struct) #:select (xref))
   #:use-module (xcb xml type)
   #:use-module (xcb xml enum)
   #:use-module (xcb xml xproto)
+  #:use-module (xcb xml ext xc_misc)
+  #:use-module (xcb xml ext ge)
+  #:use-module (xcb xml ext bigreq)
   #:use-module ((xcb xml records) #:select (make-typed-value))
-  #:use-module ((xcb xml ext bigreq) #:renamer (symbol-prefix-proc 'bigreq:))
-  #:use-module ((xcb xml ext xc_misc) #:renamer (symbol-prefix-proc 'xc-misc:))
   #:export (enable-extension))
 
 (define-public (bv->xcb-string bv)
@@ -70,15 +73,16 @@
 
 (define-public (next-xid-value xcb-conn)
   (let* ((setup (xcb-connection-setup xcb-conn))
-         (base (Setup-get-resource_id_base setup))
-         (mask (Setup-get-resource_id_mask setup))
+         (base (xref setup 'resource_id_base))
+         (mask (xref setup 'resource_id_mask))
          (inc (logand mask (- mask)))
          (last-xid (xcb-connection-last-xid xcb-conn))
          (current-xid 
           (if (> (+ last-xid inc) mask)
               (begin
                 (enable-xc-misc xcb-conn)
-                (if (xc-misc-enabled? xcb-conn) (update-xid-range! xcb-conn inc)
+                (if (xcb-connection-has-extension? xcb-conn 'xc_misc) 
+                    (update-xid-range! xcb-conn inc)
                     (error "xml-xcb: Not more xids available!")))
               (+ last-xid inc))))
     (set-xcb-connection-last-xid! xcb-conn current-xid)
@@ -87,10 +91,13 @@
 (define-public (make-new-xid xcb-conn xcb-type)
   (make-typed-value (next-xid-value xcb-conn) xcb-type))
 
+(define-public (make-xid val xcb-type)
+  (make-typed-value val xcb-type))
+
 (define (update-xid-range! xcb-conn inc)
-  (xcb-await ((range (xc-misc:GetXIDRange xcb-conn)))
-    (let ((xid-count (xc-misc:GetXIDRange-reply-get-count range))
-          (xid-start (xc-misc:GetXIDRange-reply-get-start_id range))
+  (xcb-await ((range (GetXIDRange xcb-conn)))
+    (let ((xid-count (xref range 'count))
+          (xid-start (xref range 'start_id))
           (setup (xcb-connection-setup xcb-conn)))
       (if (and (= xid-start 0) (= xid-count 1))
           (error "xml-xcb: Not more xids available!"))
@@ -99,18 +106,14 @@
        setup (* (+ xid-start (- xid-count 1)) inc))
       xid-start)))
 
-(define-public (enable-xc-misc xcb-conn)
-  (xc-misc:xcb-enable-xc_misc! 
-   xcb-conn
-   (lambda (reply) (set-xc-misc-enabled! xcb-conn #t))))
+(define-public (enable-xc-misc xcb-conn) (xcb-enable-xc_misc! xcb-conn))
 
 (define-public (enable-big-requests xcb-conn)
-  (bigreq:xcb-enable-bigreq! 
+  (xcb-enable-bigreq! 
    xcb-conn
    (lambda (reply)
-     (xcb-await ((enable (bigreq:Enable xcb-conn)))
-       (define setup (xcb-connection-setup xcb-conn))
-       (set-big-requests-enabled! xcb-conn #t)
+     (xcb-await ((enable (Enable xcb-conn)))
        (set-maximum-request-length! 
-        xcb-conn
-        (bigreq:Enable-reply-get-maximum_request_length enable))))))
+        xcb-conn (xref enable 'maximum_request_length))))))
+
+(define-public (enable-generic-events xcb-conn) (xcb-enable-ge! xcb-conn))

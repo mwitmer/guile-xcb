@@ -108,10 +108,15 @@
     (define (write! bv start count)
       (let ((out-bv (make-bytevector count)))
         (bytevector-copy! bv start out-bv 0 count)
+        ;; (format #t "Out: ~a\n" out-bv)
         (send sock out-bv)))
     (define (read! bv start count)
       (let* ((in-bv (make-bytevector count)) 
-             (bytes-read (recv! sock in-bv)))
+             (bytes-read (recv! sock in-bv))
+             ;; (tmp (make-bytevector bytes-read))
+)
+        ;; (bytevector-copy! in-bv 0 tmp 0 bytes-read)
+        ;; (format #t "In: ~a\n" tmp)
         (bytevector-copy! in-bv 0 bv start bytes-read)
         bytes-read))
     (define (close) (close-port sock))
@@ -123,7 +128,7 @@
   (define (handle-additional-authentication
            xcb-conn auth-method auth-data response)
     (format #t "X server requires additional authentication. Reason: ~a"
-            (xcb->string (SetupAuthenticate-get-reason response)))
+            (xcb->string (xcb-ref response 'reason)))
     (error "xml-xcb: Additional authentication not supported at this time"))
 
   (define (xcb-setup-unpack port)
@@ -177,14 +182,14 @@
        ((Setup? reply)
         (set-xcb-connection-setup! xcb-conn reply)
         (enable-big-requests xcb-conn)
-
         (enable-xc-misc xcb-conn)
-        (set-maximum-request-length! 
-         xcb-conn
-         (Setup-get-maximum_request_length reply))
+        (enable-generic-events xcb-conn)
+        (let ((max-length (xcb-ref reply 'maximum_request_length)))
+          (set-original-maximum-request-length! xcb-conn max-length)
+          (set-maximum-request-length! xcb-conn max-length))
         xcb-conn)
        ((SetupFailed? reply) 
-        (display (xcb->string (SetupFailed-get-reason reply)))
+        (display (xcb->string (xref reply 'reason)))
         #f)
        ((SetupAuthenticate? reply)
         (display "Further authentication required, but not supported."))))))

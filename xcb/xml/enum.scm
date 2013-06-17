@@ -21,15 +21,15 @@
 (define-public (make-xcb-enum name)
   (make-xcb-enum-internal name (make-hash-table) (make-hash-table)))
 
-(define-public (xcb-enum-set! enum key val)
+(define-public (xenum-set! enum key val)
   (hashq-set! (key-value-hash enum) key val)
   (hashq-set! (value-key-hash enum) val key))
 
-(define-public (xcb-enum-get enum key)
+(define-public (xenum-ref enum key)
   (hashq-ref (key-value-hash enum) key))
 
-(define-public (xcb-enum-key-get enum val)
+(define-public (xenum-key-ref enum val)
   (hashq-ref (value-key-hash enum) val))
 
-(define-public (xcb-enum-or enum . keys)
-  (apply logior (map (lambda (value) (xcb-enum-get enum value)) keys)))
+(define-public (xenum-or enum . keys)
+  (apply logior (map (lambda (value) (xenum-ref enum value)) keys)))

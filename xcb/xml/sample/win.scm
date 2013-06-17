@@ -14,37 +14,35 @@
  ;;    along with Guile XCB.  If not, see <http://www.gnu.org/licenses/>.
 
 (define-module (xcb xml sample win)
-  #:use-module (ice-9 receive)
   #:use-module (xcb xml)
-  #:use-module (xcb xml connection)
+  #:use-module (xcb event-loop)
   #:use-module (xcb xml xproto))
 
 (define-public (xcb-sample)
   (define xcb-conn (xcb-connect!))
   (define setup (xcb-connection-setup xcb-conn))
-  (define root  (Setup-get-roots setup 0))
-  (define root-window (SCREEN-get-root root))
+  (define root  (xref setup 'roots 0))
+  (define root-window (xref root 'root))
   (define my-window (make-new-xid xcb-conn WINDOW))
   (define my-gc (make-new-xid xcb-conn GCONTEXT))
   (define terminated? (make-parameter #f))
 
   (CreateWindow 
    xcb-conn 24 my-window root-window 0 0 200 200 0 'CopyFromParent 0 CW
-   `((BackPixel . ,(SCREEN-get-white_pixel root))
-     (EventMask . ,(xcb-enum-or EventMask 'KeyRelease 'KeyPress))))
+   `((BackPixel . ,(xref root 'white_pixel))
+     (EventMask . ,(xenum-or EventMask 'KeyRelease 'KeyPress))))
 
   (CreateGC xcb-conn my-gc my-window GC 
-            `((Foreground . ,(SCREEN-get-black_pixel root))))
+            `((Foreground . ,(xref root 'black_pixel))))
 
   (MapWindow xcb-conn my-window)
 
-  (xcb-listen! xcb-conn KeyPress
-    (lambda (key-press)
-      (format #t "KeyPress: ~a\n" (KeyPress-get-detail key-press))))
+  (xcb-listen! xcb-conn KeyPress-event
+    (lambda (key-press) (format #t "KeyPress: ~a\n" (xref key-press 'detail))))
 
-  (xcb-listen! xcb-conn KeyRelease
+  (xcb-listen! xcb-conn KeyRelease-event
     (lambda (key-release)
-      (define keycode (KeyRelease-get-detail key-release))
+      (define keycode (xref key-release 'detail))
       (format #t "KeyRelease: ~a\n" keycode)
       (if (= keycode 9) (terminated? #t))))
 

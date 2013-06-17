@@ -1,5 +1,3 @@
-#!/home/mark/build/guile-2.0/bin/guile
-!#
  ;; This file is part of Guile XCB.
 
  ;;    Guile XCB is free software: you can redistribute it and/or modify
@@ -18,12 +16,13 @@
 (define-module (xcb xml sample tinywm)
   #:use-module (system repl server)
   #:use-module (xcb xml xproto)
+  #:use-module (xcb event-loop)
   #:use-module (xcb xml))
 
 (define xcb-conn (xcb-connect!))
 (define setup (xcb-connection-setup xcb-conn))
-(define screen  (Setup-get-roots setup 0))
-(define root (SCREEN-get-root screen))
+(define screen (xref setup 'roots 0))
+(define root (xref screen 'root))
 
 (define terminated? (make-parameter #f))
 (define action (make-parameter 'none))
@@ -31,7 +30,7 @@
 
 (define (wm-shell-command command)
   (define display-string 
-    (format #f "DISPLAY=" (xcb-connection-display xcb-conn)))
+    (format #f "DISPLAY=~a" (xcb-connection-display xcb-conn)))
   (if (= (primitive-fork) 0)
       (let ((env (cons display-string (environ))))
         (execle "/bin/sh" env "/bin/sh" "-c" command))))
@@ -52,59 +51,58 @@
     (if (eq? (action) 'move)
         (ConfigureWindow 
          xcb-conn (win) ConfigWindow
-         `((X . ,(new-coord (QueryPointer-reply-get-root_x pointer) 
-                            (GetGeometry-reply-get-width geom)
-                            (SCREEN-get-width_in_pixels screen)))
-           (Y . ,(new-coord (QueryPointer-reply-get-root_y pointer) 
-                            (GetGeometry-reply-get-height geom)
-                            (SCREEN-get-height_in_pixels screen)))))
+         `((X . ,(new-coord (xref pointer 'root_x) 
+                            (xref geom 'width)
+                            (xref screen 'width_in_pixels)))
+           (Y . ,(new-coord (xref pointer 'root_y) 
+                            (xref geom 'height)
+                            (xref screen 'height_in_pixels)))))
         (ConfigureWindow 
          xcb-conn (win) ConfigWindow 
-         `((Width . ,(- (QueryPointer-reply-get-root_x pointer) 
-                        (GetGeometry-reply-get-x geom)))
-           (Height . ,(- (QueryPointer-reply-get-root_y pointer) 
-                         (GetGeometry-reply-get-y geom))))))))
+         `((Width . ,(- (xref pointer 'root_x) 
+                        (xref geom 'x)))
+           (Height . ,(- (xref pointer 'root_y) 
+                         (xref geom 'y))))))))
 
 (define (on-button-release button-release) 
   (UngrabPointer xcb-conn xcb-current-time))
 
 (define (on-button-press button-press)
-  (win (ButtonPress-get-child button-press))
+  (win (xref button-press 'child))
   (ConfigureWindow 
    xcb-conn (win) ConfigWindow 
-   `((StackMode . ,(xcb-enum-get StackMode 'Above))))
+   `((StackMode . ,(xenum-ref StackMode 'Above))))
   (xcb-await ((geom (GetGeometry xcb-conn (win))))
     (cond
-     ((= (ButtonPress-get-detail button-press) 1)
+     ((= (xref button-press 'detail) 1)
       (action 'move)
       (WarpPointer xcb-conn (xcb-none WINDOW) (win) 0 0 0 0 1 1))
      (else
       (action 'resize)
       (WarpPointer 
        xcb-conn (xcb-none WINDOW) (win) 0 0 0 0 
-       (GetGeometry-reply-get-width geom)
-       (GetGeometry-reply-get-height geom))))
+       (xref geom 'width)
+       (xref geom 'height))))
     (GrabPointer
      xcb-conn #f root '(ButtonRelease ButtonMotion PointerMotionHint)
      'Async 'Async root (xcb-none CURSOR) xcb-current-time)))
 
 (define (on-key-press key-press)
   (cond
-   ((and (win) (= (KeyPress-get-detail key-press) 67)) 
+   ((and (win) (= (xref key-press 'detail) 67)) 
     (ConfigureWindow 
      xcb-conn (win) ConfigWindow 
-     `((StackMode . ,(xcb-enum-get StackMode 'Below)))))
-   ((= (KeyPress-get-detail key-press) 24)
+     `((StackMode . ,(xenum-ref StackMode 'Below)))))
+   ((= (xref key-press 'detail) 24)
     (terminated? #t))))
 
-(xcb-listen! xcb-conn MotionNotify on-motion-notify #t)
-(xcb-listen! xcb-conn ButtonRelease on-button-release #t)
-(xcb-listen! xcb-conn ButtonPress on-button-press #t)
-(xcb-listen! xcb-conn KeyPress on-key-press #t)
-(xcb-listen! xcb-conn Drawable-error on-drawable-error #t)
-(xcb-listen! xcb-conn Window-error on-window-error #t)
+(xcb-listen! xcb-conn MotionNotify-event on-motion-notify)
+(xcb-listen! xcb-conn ButtonRelease-event on-button-release)
+(xcb-listen! xcb-conn ButtonPress-event on-button-press)
+(xcb-listen! xcb-conn KeyPress-event on-key-press)
+
+(wm-shell-command "xterm -e 'telnet localhost 37146'")
 
 (spawn-server)
-(wm-shell-command "xterm -e 'telnet localhost 37146'")
 (xcb-event-loop xcb-conn terminated?)
 (xcb-disconnect! xcb-conn)

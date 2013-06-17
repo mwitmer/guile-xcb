@@ -381,7 +381,7 @@
      ,(symbol-append name-sym '?)
      ,(symbol-append name-sym '-type)
      ,switch
-     ,@(map (struct-field-syntax name-sym) fields)))
+     ,@(map element-syntax-syntax fields)))
 
 ;; TODO: Optional switch expression arguments
 (define (get-field-argument-names fields valueparam switch)
@@ -421,7 +421,7 @@
      (make-element-syntax 'expression `(lambda (field-ref) (field-ref 
 							    ',(string->symbol fieldref))) #f))
     ((enumref (@ (ref ,ref)) ,enumref) (guard (string? enumref) (string? ref)) 
-     (make-element-syntax 'expression `(lambda (field-ref) (xcb-enum-get 
+     (make-element-syntax 'expression `(lambda (field-ref) (xenum-ref
 							    ,(string->symbol ref) 
 							    (quote ,(string->symbol enumref)))) #f))
     ((sumof (@ (ref ,ref))) (guard (string? ref)) 
@@ -531,10 +531,9 @@
          fields) switch-syntax))
   (define hook-syntax
     `(define hook
-       ,(if has-reply?
-            `(xcb-connection-register-reply-hook!
-              xcb-conn ,(symbol-append request-name '-reply))
-            `*unspecified*)))
+       (xcb-connection-register-reply-hook!
+         xcb-conn ,(if has-reply?
+                       (symbol-append request-name '-reply) #f))))
   (define valueparam-result-syntax
     (if valueparam-syntax 
         `(valueparam valueparam-enum
@@ -572,17 +571,6 @@
                             valuelist))
                     '())))))))
        hook)))
-
-(define ((struct-field-syntax name-sym) field) 
-  (let* ((syn (element-syntax-syntax field))
-         (field-name (car syn)))
-    (if (eq? field-name '*pad*)
-        syn
-        (append 
-         syn 
-         (list
-          (symbol-append name-sym '-get- field-name)
-          (symbol-append name-sym '-set- field-name '!))))))
 
  (define (enable-extension-procname header-symbol)
   ((symbol-prefix-proc ((symbol-prefix-proc 'xcb-enable-) header-symbol)) '!))
@@ -644,7 +632,7 @@
        
        (make-element-syntax
 	'event
-	(let ((event-struct-name (string->symbol name)))
+	(let ((event-struct-name (string->symbol (string-append name "-event"))))
 	  `(begin
 	     ,(get-define-xcb-struct-syntax 
 	       event-struct-name 
@@ -668,8 +656,8 @@
       (string? ref))
      (make-element-syntax 
       'eventcopy 
-      (let ((event-struct-name (string->symbol name))
-	    (old-event-struct-name (string->symbol ref)))
+      (let ((event-struct-name (string->symbol (string-append name "-event")))
+	    (old-event-struct-name (string->symbol (string-append ref "-event"))))
 	`(begin
            (clone-xcb-struct 
             ,old-event-struct-name 
@@ -762,7 +750,7 @@
 		   (let* ((item-syntax (element-syntax-syntax (car items)))
 			  (provided-value (cdr item-syntax)))
 		     (cons
-		      `(xcb-enum-set! ,(string->symbol name)
+		      `(xenum-set! ,(string->symbol name)
 				      (quote ,(car item-syntax))
 				      ,(if provided-value `(,provided-value #f) next-value))
 		      (if provided-value
@@ -857,7 +845,7 @@
                           (xcb-connection-register-events xcb-conn xcb-events 0)
                           (xcb-connection-register-errors xcb-conn xcb-errors 0))
                        `(enable-extension 
-                         xcb-conn ,extension-xname
+                         xcb-conn ,extension-xname (quote ,header-symbol)
                          set-extension-opcode!
                          xcb-events xcb-errors
                          proc)))
@@ -886,7 +874,7 @@
             (define-xcb-union 
               ,name-sym
               ,(symbol-append 'make- (string->symbol name))
-              ,@(map (struct-field-syntax name-sym) fields))
+              ,@(map element-syntax-syntax fields))
             (define ,(symbol-append (string->symbol name) '-type) 
               (xcb-type-for-union ,(string->symbol name))))
          #f))))

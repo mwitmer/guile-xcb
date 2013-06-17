@@ -81,6 +81,7 @@ Guile XCB.
 * The X Window System::           The foundation of GUIs for Unix and friends
 * XCB::                           The X protocol C-language Binding
 * Guile::                         GNU's Ubiquitous Intelligent Language for Extenions
+* What to Import::                Where to find Guile XCB's procedures
 
 @end menu
 
@@ -177,6 +178,28 @@ Guile XCB uses this facility to compile the X protocol XML files into
 Scheme code. Once compiled, the core protocol and available extensions
 are each represented by a Guile module.
 
+@node What to Import
+@section What to Import
+
+The core X protocol is defined in module @code{(xcb xml
+xproto)}. Support functions for interacting with the X server are
+found in @code{(xcb xml)}, and functions for running an event loop are
+in @code{(xcb event-loop)}. @xref{The Event Loop}.
+
+Extensions to the X protocol are found in modules named using the
+format @code{(xcb xml ext @var{extension-name})}. @xref{Using
+Extensions}. @var{extension-name} can be one of the following:
+
+@code{bigreq}, @code{composite}, @code{damage}, @code{dpms},
+@code{dri2}, @code{ge}, @code{glx}, @code{randr}, @code{record},
+@code{render}, @code{res}, @code{screensaver}, @code{shape},
+@code{shm}, @code{sync}, @code{xc_misc}, @code{xevie}, @code{xf86dri},
+@code{xf86vidmode}, @code{xfixes}, @code{xinerama}, @code{xinput},
+@code{xkb}, @code{xselinux}, @code{xtest}, @code{xv}, or @code{xvmc}.
+
+Some of these extensions, while supported by Guile XCB, are deprecated
+and may not be available with the latest X server versions.
+
 @node The XCB Data Structures
 @chapter The XCB Data Structures
 
@@ -198,11 +221,10 @@ Since the original purpose of XCB was to create a C interface based on
 the X protocol XML files, the schema of the XML files coincides nicely
 with C structures.
 
-Guile XCB defines objects that behave similarly to C structures, as
-well as getter and setter methods for the individual fields in the
-structures. For example, when the following XML from xproto.xml is
-compiled, the new module will contain a variable named
-@code{SetupFailed}:
+Guile XCB defines objects that behave similarly to C structures, and
+provides the means for accessing and modifying their values.  For
+example, when the following XML from xproto.xml is compiled, the new
+module will contain a variable named @code{SetupFailed}:
 
 @example
 
@@ -219,50 +241,37 @@ compiled, the new module will contain a variable named
 
 @end example
 
-@code{SetupFailed} is a Scheme record the keeps track of information
-about SetupFailed structs received from the X server, including their
-fields, and how they are read and written. Transparent to the user, it
-also contains a record type definition for particular instances of the
-structure. A @code{SetupFailed} can be created with the procedure
+@code{SetupFailed} is a Scheme object the keeps track of information
+about SetupFailed structures received from the X server, including
+their fields and how they are read and written. An instance of
+@code{SetupFailed} can be created with the procedure
 @code{make-SetupFailed}, which takes as arguments values for each of
-the fields described above, as well as a vector of values for the list
-field. @footnote{Unfortunately, because of XCB's C orientation, it is
-necessary to provide a value for @samp{reason_len} even though the
-length of the vector given for @samp{reason} is already evident.}
+the fields described above. The last field, a list with name
+@code{reason}, is represented as a vector. @footnote{Unfortunately,
+because of XCB's C orientation, it is necessary to provide a value for
+@samp{reason_len} even though the length of the vector given for
+@samp{reason} is already evident.}
 
 @deffn {Scheme Procedure} make-SetupFailed status reason_len protocol_major_version protocol_minor_version length reason
 Create an xcb struct of type SetupFailed
 @end deffn
 
-Methods to access fields of an xcb struct use the form
-@var{structname}-get-@var{fieldname}
+Fields of an xcb structure instance can be accessed using the
+procedure @code{xref}.
 
-@deffn {Scheme Procedure} SetupFailed-get-status xcb-struct
-Return the status of SetupFailed xcb structure @var{xcb-struct}
+@deffn {Scheme Procedure} xref rec field | rec field n
+Return the value of field @var{field} in record @var{rec}. In the
+second form, return the @var{n}th value of list field @var{field} in
+record @var{rec}.
 @end deffn
 
-For list fields, it is also possible to include a specific index to
-retrieve:
+Fields of an xcb structure instance can be modified using the
+procedure @code{xset!}.
 
-@deffn {Scheme Procedure} SetupFailed-get-reason xcb-struct [n]
-Return the @var{n}th element in SetupFailed xcb structure
-@var{xcb-struct}, or the entire vector if @var{n} is ommitted
-@end deffn
-
-Methods to set fields of an xcb struct use the form
-@var{structname}-set-@var{fieldname}!
-
-@deffn {Scheme Procedure} SetupFailed-set-status! xcb-struct status
-Set the status of SetupFailed xcb structure @var{xcb-struct} to
-@var{status}.
-@end deffn
-
-Again, it is also possible to include a specific index to set:
-
-@deffn {Scheme Procedure} SetupFailed-set-reason! xcb-struct [n] reason 
-Set the @var{n}th element of field @samp{reason} in SetupFailed xcb
-structure @var{xcb-struct} to @var{reason}, or sets the entire vector
-to @samp{reason} if @var{n} is ommitted
+@deffn {Scheme Procedure} xset! rec field val | rec field n val
+Set the value of field @var{field} in @var{rec} to @var{val}. In the
+second form, set the @var{n}th element of list field @var{field} in
+@var{rec} to @var{val}.
 @end deffn
 
 Guile XCB will check to ensure that each value conforms to its type
@@ -340,12 +349,19 @@ xidtype: These are 4-byte opaque types representing handles to objects
 managed by the X server. XIDs are created with the procedure
 @code{make-new-xid}. @xref{XIDs}.
 @item
-union: These types refer to a list of fields; the type of the actual
-value is one and only one of the fields' types.
-@item
 struct: Each struct also has a type associated with it (identified by
 the variable @var{structname}-type) and can be included as the type of a
 field in other structs.
+@item
+union: These types refer to a list of fields much like structures
+do. However, the union only contains one value. When the user requests
+the value of one of the fields, that single value is converted from
+raw bytes to the appropriate field's representation.
+
+@deffn {Scheme Procedure} xunion-ref rec field
+Return the data in xcb union instance @var{rec} represented as a value
+conforming to the specification of @var{field}.
+@end deffn
 @end itemize 
 
 @node Enums and Masks
@@ -364,7 +380,7 @@ symbols as a value: @code{NotUseful}, @code{WhenMapped}, or
 value.
 
 @samp{mask} fields use a list of symbols, each one representing a
-value from the mask, which are then logior'd together.
+value from the mask, which are then combined with @code{logior}.
 
 @samp{altenum} fields are like @samp{enum} fields, except that they
 accept any integer value within the provided type as well as any
@@ -378,19 +394,19 @@ numeric value will be provided instead.
 To determine what symbols are present in an enum, consult the XML file
 or evalute the name of the enum at the REPL. Clients may also access
 the underlying numeric values in a enum with the procedure
-@code{xcb-enum-get}.
+@code{xenum-ref}.
 
-@deffn {Scheme Procedure} xcb-enum-get enum key
+@deffn {Scheme Procedure} xenum-ref enum key
 Returns the numeric value stored in @var{enum} with key @var{key}.
 @end deffn
 
 For fields that are not explicitly marked as using a mask but
 nevertheless require values logir'd together, the procedure
-@code{xcb-enum-or} is available:
+@code{xenum-or} is available:
 
-@deffn {Scheme Procedure} xcb-enum-or enum . keys
+@deffn {Scheme Procedure} xenum-or enum . keys
 Return the values associated with @var{keys} in xcb enum @var{enum}
-logior'd together.
+combined with @code{logior}.
 @end deffn
 
 @node Interacting With the X Server
@@ -461,7 +477,7 @@ more other fields in the request.
 * Valueparams::
 * Switches::
 * XIDs::
-* Predefined Values::
+* Predefined Values and Helpers::
 
 @end menu
 
@@ -507,9 +523,10 @@ involves two fields: a value mask, and a value list. Collectively they
 are referred to as a valueparam. For every bit set in the value mask,
 the X server will read off an element from the value list.
 
-In the C implementation of XCB, the user has to logior together values
-from an enum to generate the value mask, and then create a list of
-values in the correct order to match the bits in the mask.
+In the C implementation of XCB, the user has combine values from an
+enum using @code{||} in order to generate the value mask, and then
+create a list of values in the correct order to match the bits in the
+mask.
 
 The Guile XCB approach is less complicated; in place of a value param,
 the first argument is the name of the XCB enum that the value mask
@@ -585,15 +602,39 @@ require an XID for the new resource. @var{xcb-type} is an xid type
 such as @code{WINDOW} or @code{GC}.
 @end deffn
 
+Sometimes, due to ommissions in the XCB-XML files, replies from the X
+server will store an XID's integer value without the annotation that
+it is an XID. In this case, it might be necessary to convert the raw
+integer into a typed XID.
+
+@deffn {Scheme Procedure} make-xid n xid-type
+Create an XID with of type @var{xid-type} with id number @var{n}.
+@end deffn
+
+On other occasions, it can be useful to extract the integer value from
+an XID.
+
+@deffn {Scheme Procedure} xid->integer xid
+Return the raw integer value of @var{xid}.
+@end deffn
+
+It can also be useful to compare XIDs:
+
+@deffn {Scheme Procedure} xid= xid1 xid2
+Returns @code{#t} if the integer value and type of @var{xid1} and
+@var{xid2} are the same (@code{=} and @code{eq?}, respectively).
+@end deffn
+
 Guile XCB uses the XC_MISC X extension where available to avoid
 running out of XIDs. @xref{X Extensions Used by Guile XCB}.
 
-@node Predefined Values
-@subsection Predefined Values
+@node Predefined Values and Helpers
+@subsection Predefined Values and Helpers
 
-Because it is a binary protocol and everything must be expressed
-numerically, the X protocol sometimes uses the value zero to represent
-calculated or predefined values.
+Because the X protocol is a binary protocol and everything must be
+expressed numerically, managing complex values and even strings can be
+unwieldy. Guile XCB provides a very limited selection of methods and
+values to simply these tasks.
 
 @deffn {Scheme Variable} xcb-current-time
 Alias for the value zero to use in fields that describe X timestamps;
@@ -604,6 +645,22 @@ causes the X server to use the current time for the field's value.
 Create an XID for @var{xcb-type} with an actual value of zero; for use in
 fields of X requests that accept ``none'' as an option instead of a
 defined XID.
+@end deffn
+
+@deffn {Scheme Procedure} string->xcb str
+Convert a UTF-8 string into a vector of xcb chars.
+@end deffn
+
+@deffn {Scheme Procedure} xcb->string
+Convert a vector of xcb chars into a UTF-8 string.
+@end deffn
+
+@deffn {Scheme Procedure} xcb-bytes->string
+Convert a vector of xcb bytes into a UTF-8 string.
+@end deffn
+
+@deffn {Scheme Procedure} string->xcb2b
+Convert a UTF-16 string into a vector of xcb double-width chars.
 @end deffn
 
 @node Events and Errors
@@ -675,8 +732,8 @@ procedure, attempt to remove it from the hook.
 The core X protocol has been joined over time by a number of
 extensions, which provide much of the actual functionality required by
 modern X applications. Many of these extensions are available in Guile
-XCB. Some are used by the Guile XCB code itself, and the rest can be
-enabled as necessary.
+XCB. @xref{What to Import}. Some are used by the Guile XCB code
+itself, and the rest can be enabled as necessary.
 
 @menu
 * Enabling X Extensions::
@@ -704,6 +761,21 @@ XML file. Specific procedures of this type are named
 @code{xcb-enable-bigreq!}, @code{xcb-enable-xc_misc!}, and so on.
 @end deffn
 
+A client can check to see if extensions have been enabled for a given
+xcb connection.
+
+@deffn {Scheme Procedure} xcb-connection-has-extension? xcb-conn ext-name
+Return @code{#t} if an op code has been received from the X server
+connection to @var{xcb-conn} for extension with name
+@var{ext-name}. @var{ext-name} should be a symbol corresponding to the
+value of the @code{header} attribute in the extension's XML file.
+@end deffn
+
+Note that Guile XCB does not perform any version negotiation with the
+server; enabling an extension simply provides the xcb connection with
+the opcode, first event number, and first error number necessary for
+further interaction with the extension.
+
 Several X Extensions will bind the same variable name to different
 values. Modules that import extensions with conflicting definitions
 should use @code{#:rename} as appropriate. @inforef{Using Guile
@@ -720,8 +792,8 @@ client library to its users:
 BIG-REQUESTS: In the core X protocol, requests are limited in size to
 around 260KB. To support certain extensions that require longer
 requests, the big requests extension was created to allow requests up
-to 16GB. Guile XCB will automatically use big
-requests if they are available.
+to 16GB. Guile XCB will automatically use big requests if they are
+available.
 
 @item
 XC_MISC: The X server supports a limited number of XIDs per connection; if the
@@ -729,6 +801,16 @@ supply of XIDs runs out, @code{make-new-xid} will cause an error.
 Many X servers support XC_MISC, an extension that allows clients to
 request a new range of XIDs when the original range runs out. Guile
 XCB will automatically use XC_MISC if it is available.
+
+@item
+Generic Event Extension: Standard X events are limited to 32 bytes in
+length and there is also a limited quantity of error opcodes
+available. To circumvent both of these limitations, the Generic Event
+Extension turns the event with opcode 35 into a special generic event,
+which receives a standard header describing the contents of more
+specific events, which can be longer than the original 32-byte limit.
+Guile XCB understands generic events, although they will not
+necessarily be sent by any extensions in use by a particular client.
 @end itemize
 
 @node Writing Guile XCB Applications
@@ -742,10 +824,34 @@ loop and describing in advance how data from the X server will be
 handled.
 
 @menu
-* Asynchronous X Requests::
 * The Event Loop::
+* Asynchronous X Requests::
 * Built-in XCB Documentation::
 @end menu
+
+@node The Event Loop
+@section The Event Loop
+
+There are no strict requirements regarding the format of an X
+application, and Guile XCB does not impose any on its users. However,
+one very common design is to run a loop that constantly polls the X
+connection for events, errors, and replies and sends requests to
+update the X server state depending on the data it receives. The
+procedure @code{xcb-event-loop} provides a simple framework for
+running such a loop.
+
+@deffn {Scheme Procedure} xcb-event-loop xcb-conn sentinel [defer?=@code{#f}]
+Repeatedly poll the X server connected to @var{xcb-conn} for reply,
+event, and error thunks until the value of parameter @var{sentinel}
+changes in any way (even to @code{#f}).
+
+If @var{defer?} is @code{#t}, reply thunks are evaluted immediately, while
+event and error thunks are queued and evaluted after the loop
+exits. Otherwise, thunks are evaluated in the order they are received.
+@end deffn
+
+Event loop and asynchronous X request functions are found in the
+@code{(xcb event-loop)} module. @xref{What to Import}.
 
 @node Asynchronous X Requests
 @section Asynchronous X Requests
@@ -777,36 +883,15 @@ reply handler may be called as a result of @emph{any} call to
 @code{poll-xcb-connection}---not just when the promise is explicitly
 being forced.}
 
-@deffn {Scheme Syntax} xcb-later (request xcb-conn args ...)
+@deffn {Scheme Syntax} xcb-later request xcb-conn args ...
 Sends @var{request} using X connection @var{xcb-conn} and arguments
 @var{args}. Evaluates to a promise that runs a deferring event loop
 and blocks until the response is received and returns the server's
 reply.
 @end deffn
 
-@deffn {Scheme Syntax} xcb-now (request xcb-conn args ...)
-Syntactic sugar for (force (xcb-later (request xcb-con args ...))).
-@end deffn
-
-@node The Event Loop
-@section The Event Loop
-
-There are no strict requirements regarding the format of an X
-application, and Guile XCB does not impose any on its users. However,
-one very common design is to run a loop that constantly polls the X
-connection for events, errors, and replies and sends requests to
-update the X server state depending on the data it receives. The
-procedure @code{xcb-event-loop} provides a simple framework for
-running such a loop.
-
-@deffn {Scheme Procedure} xcb-event-loop xcb-conn sentinel [defer?=@code{#f}]
-Repeatedly poll the X server connected to @var{xcb-conn} for reply,
-event, and error thunks until the value of parameter @var{sentinel}
-changes in any way (even to @code{#f}).
-
-If @var{defer?} is @code{#t}, reply thunks are evaluted immediately, while
-event and error thunks are queued and evaluted after the loop
-exits. Otherwise, thunks are evaluated in the order they are received.
+@deffn {Scheme Syntax} xcb-now request xcb-conn args ...
+Syntactic sugar for (force (xcb-later request xcb-con args ...)).
 @end deffn
 
 @node Built-in XCB Documentation

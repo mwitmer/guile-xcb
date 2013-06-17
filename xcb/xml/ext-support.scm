@@ -17,21 +17,30 @@
   #:use-module (xcb xml connection)
   #:use-module (xcb xml xproto)
   #:use-module (xcb xml type)
+  #:use-module ((xcb xml struct) #:select (xref))
+  #:use-module ((xcb event-loop) #:select (xcb-await))
   #:use-module ((xcb xml records) #:select (make-typed-value)) 
   #:export (enable-extension))
 
-(define* (enable-extension xcb-conn name set-opcode! 
-                           events errors #:optional proc)
-  (define (enable opcode reply)
+(define (string->xcb str)
+  (list->vector 
+   (map (lambda (ch) (make-typed-value ch char))
+        (string->list str))))
+
+(define* (enable-extension 
+          xcb-conn name header set-opcode! events errors #:optional proc)
+  (define (enable opcode first-event first-error reply)
     (set-opcode! opcode)
-    (xcb-connection-register-events xcb-conn events opcode)
-    (xcb-connection-register-errors xcb-conn errors opcode)
-    (if proc (proc reply) #t))
+    (xcb-connection-register-events xcb-conn events first-event)
+    (xcb-connection-register-errors xcb-conn errors first-error)
+    (let ((result (if proc (proc reply) #t)))
+      (xcb-connection-use-extension! xcb-conn header)
+      result))
   (xcb-await 
-      ((reply (QueryExtension 
-               xcb-conn (string-length name) 
-               (list->vector 
-                (map (lambda (ch) (make-typed-value ch char))
-                     (string->list name))))))
-    (if (QueryExtension-reply-get-present reply)
-        (enable (QueryExtension-reply-get-major_opcode reply) reply) #f)))
+      ((reply 
+        (QueryExtension xcb-conn (string-length name) (string->xcb name))))
+    (if (xref reply 'present)
+        (enable (xref reply 'major_opcode)
+                (xref reply 'first_event)
+                (xref reply 'first_error) reply)
+        (error "Could not find extension version on server" name))))

@@ -26,7 +26,8 @@
   #:use-module (xcb xml records)
   #:use-module (xcb xml enum)
   #:use-module ((rnrs base) #:select (vector-for-each vector-map))
-  #:export (define-xcb-struct clone-xcb-struct xcb-struct-field-specifier))
+  #:export (define-xcb-struct clone-xcb-struct 
+             xcb-struct-field-specifier))
 
 (define-public (resolve-type type mask enum require-enum?)
   (define base-type
@@ -70,36 +71,12 @@
           (field-value-expressions xcb-struct)
           (list-length-expressions xcb-struct)
           (get-constructor-args xcb-struct)
-          (field-order xcb-struct)
-          (accessors xcb-struct)
-          (modifiers xcb-struct)))
+          (field-order xcb-struct)))
        (define-public constructor-name
          (xcb-struct-constructor 
-          new-xcb-struct
-          (get-constructor-args xcb-struct)))
+          new-xcb-struct (get-constructor-args xcb-struct)))
        (define-public predicate-name (xcb-struct-predicate new-xcb-struct))
-       (define-public xcb-struct-type (xcb-type-for-struct new-xcb-struct))
-       (map
-        (lambda (field-name)
-          (define field-accessor-name
-            (symbol-append (quote new-xcb-struct) '-get- field-name))
-          (define! field-accessor-name
-            (if (xcb-type-list? (hashq-ref (types new-xcb-struct) field-name))
-                (xcb-struct-vector-accessor new-xcb-struct field-name)
-                (xcb-struct-accessor new-xcb-struct field-name)))
-          (module-export! (current-module) (list field-accessor-name)))
-        (accessors new-xcb-struct))
-       (map 
-        (lambda (field-name)
-          (define field-modifier-name
-            (symbol-append (quote new-xcb-struct) '-set- field-name '!))
-          (define! field-modifier-name
-            (if (xcb-type-list? 
-                 (hashq-ref (types new-xcb-struct) field-name))
-                (xcb-struct-vector-modifier new-xcb-struct field-name)
-                (xcb-struct-modifier new-xcb-struct field-name)))
-          (module-export! (current-module) (list field-modifier-name)))
-        (modifiers new-xcb-struct))))))
+       (define-public xcb-struct-type (xcb-type-for-struct new-xcb-struct))))))
 
 (define-syntax define-xcb-struct
   (syntax-rules ()
@@ -121,9 +98,7 @@
        (define-public constructor 
          (xcb-struct-constructor type '(constructor-tag ...)))
        (define-public predicate (xcb-struct-predicate type))
-       (define-public type-name (xcb-type-for-struct type))
-       (define-xcb-struct-field type field-tag xcb-type . more)
-       ...))))
+       (define-public type-name (xcb-type-for-struct type))))))
 
 (define-syntax xcb-struct-field-specifier
   (syntax-rules (*list* *pad* *expr*)
@@ -133,46 +108,8 @@
      (list 'field-tag xcb-type '*expr* field-value-expression))
     ((_ field-tag xcb-type *list* list-length-expression)
      (list 'field-tag xcb-type '*list* list-length-expression))
-    ((_ field-tag xcb-type *expr* field-value-expression accessor modifier)
-     (list 'field-tag xcb-type '*expr* field-value-expression))
-    ((_ field-tag xcb-type *list* list-length-expression accessor modifier)
-     (list 'field-tag xcb-type '*list* list-length-expression))
     ((_ field-tag xcb-type)
-     (list 'field-tag xcb-type #f))
-    ((_ field-tag xcb-type accessor)
-     (list 'field-tag xcb-type #f))
-    ((_ field-tag xcb-type accessor modifier)
      (list 'field-tag xcb-type #f))))
-
-(define-syntax define-xcb-struct-field
-  (syntax-rules (*list* *pad* *expr*)
-    ((define-xcb-struct-field type field-tag xcb-type accessor)
-     (begin
-      (define-public accessor (xcb-struct-accessor type  'field-tag))
-      (set-accessors! type (cons 'field-tag (accessors type)))))
-    ((define-xcb-struct-field type field-tag xcb-type accessor modifier)
-     (begin
-       (begin
-	 (define-public accessor (xcb-struct-accessor type 'field-tag))
-	 (define-public modifier (xcb-struct-modifier type 'field-tag))
-	 (set-accessors! type (cons 'field-tag (accessors type)))
-	 (set-modifiers! type (cons 'field-tag (modifiers type))))))
-    ((define-xcb-struct-field 
-       type field-tag xcb-type *list* list-length-expression accessor modifier)
-     (begin
-       (define-public accessor 
-	 (if list-length-expression 
-	     (xcb-struct-vector-accessor type 'field-tag)
-	     (xcb-struct-accessor type 'field-tag)))
-       (define-public modifier 
-	 (if list-length-expression
-	     (xcb-struct-vector-modifier type 'field-tag)
-	     (xcb-struct-modifier type 'field-tag)))
-       (set-accessors! type (cons 'field-tag (accessors type)))
-       (set-modifiers! type (cons 'field-tag (modifiers type)))))
-    ((define-xcb-struct-field type *pad* size) *unspecified*)
-    ((define-xcb-struct-field 
-       type field-tag xcb-type *expr* expr accessor modifier) *unspecified*)))
 
 (define (make-xcb-struct-for-record-type 
 	 xcb-struct-name switch all-field-specifiers my-constructor-args)
@@ -194,15 +131,18 @@
          (cadddr field-specifier)))
     (if (eq? (caddr field-specifier) '*expr*)
         (hashq-set! field-value-expressions 
-                    (car field-specifier) 
+                    (car field-specifier)
                     (cadddr field-specifier)))
     (hashq-set! types (car field-specifier) xcb-type))
   (define switch-name (if switch (xcb-switch-name switch) #f))
-  (define basic-fields (map car (filter field-visible? field-specifiers)))
+  (define basic-fields 
+    (cons
+     'xcb-struct-type
+     (map car (filter field-visible? field-specifiers))))
 
   (for-each process-type field-specifiers)
 
-  (make-xcb-struct 
+  (make-xcb-struct
    (make-record-type 
     xcb-struct-name 
     (if switch-name (append basic-fields (list switch-name)) basic-fields)
@@ -212,14 +152,12 @@
    field-value-expressions
    list-length-expressions
    my-constructor-args
-   all-field-specifiers
-   '() '()))
+   all-field-specifiers))
 
 (define-public (xcb-switch-values xcb-struct rec)
   (define accessor
-    (record-accessor 
-     (inner-type xcb-struct)
-     (xcb-switch-name (switch xcb-struct))))
+    (record-accessor
+     (inner-type xcb-struct) (xcb-switch-name (switch xcb-struct))))
   (accessor rec))
 
 (define* ((xcb-struct-field-ref-proc xcb-struct rec #:optional alist) field)
@@ -255,57 +193,82 @@ of list LIST in REC"
   (typecheck (if (typed-value? item) item (make-typed-value item xcb-type))))
 
 (define (xcb-struct-constructor xcb-struct fields)   
-  (define constructor (record-constructor (inner-type xcb-struct) fields))
+  (define constructor (record-constructor 
+                       (inner-type xcb-struct) 
+                       (cons 'xcb-struct-type fields)))
   (define (process-value arg field)
     (define xcb-type (hashq-ref (types xcb-struct) field))
     (if (xcb-type-list? xcb-type)
         (vector-map (lambda (el) (type-wrap el xcb-type)) arg)
         (type-wrap arg xcb-type)))
-  (lambda args (apply constructor (map-in-order process-value args fields))))
+  (lambda args 
+    (apply constructor 
+           (cons xcb-struct (map-in-order process-value args fields)))))
 
 (define-public (construct-xcb-struct xcb-struct field-arg-alist)
-  (define (box-values xcb-struct field-arg-alist)
-    (define (box-value field-arg)
-      (define xcb-type (hashq-ref (types xcb-struct) (car field-arg)))
-      (define switch-name 
-        (if (switch xcb-struct) (xcb-switch-name (switch xcb-struct)) #f))
-      (define value (cdr field-arg))
-      (cond
-       ((eq? (car field-arg) switch-name) (cdr field-arg))
-       ((xcb-type-opaque? xcb-type)
-        (if (typed-value? value) value
-            (error "xml-xcb: Passing unboxed value of opaque type" value)))
-       ((xcb-type-list? xcb-type)
-        (if (vector? value) value
-            (error "xml-xcb: Attempt to pass a non-vector \
+  (define (box-value field-arg)
+    (define xcb-type (hashq-ref (types xcb-struct) (car field-arg)))
+    (define (require-type value) 
+      (if (typed-value? value) value
+          (error "xml-xcb: Passing unboxed value of opaque type" value)))
+    (define switch-name 
+      (if (switch xcb-struct) (xcb-switch-name (switch xcb-struct)) #f))
+    (define value (cdr field-arg))
+    (cond
+     ((eq? (car field-arg) switch-name) (cdr field-arg))
+     ((xcb-type-opaque? xcb-type)
+      (if (xcb-type-list? xcb-type)
+          (vector-map require-type value)
+          (require-type value)))
+     ((xcb-type-list? xcb-type)
+      (if (vector? value) value
+          (error "xml-xcb: Attempt to pass a non-vector \
 as an xcb list type" value))
-        (vector-map (lambda (el) (type-wrap el xcb-type)) value))
-       (else (type-wrap value xcb-type))))
-    (map box-value field-arg-alist))
+      (vector-map (lambda (el) (type-wrap el xcb-type)) value))
+     (else (type-wrap value xcb-type))))
 
   (apply 
-   (record-constructor (inner-type xcb-struct) (map car field-arg-alist))
-   (box-values xcb-struct field-arg-alist)))
+   (record-constructor 
+    (inner-type xcb-struct) 
+    (cons 'xcb-struct-type (map car field-arg-alist)))
+   (cons xcb-struct (map box-value field-arg-alist))))
 
-(define (xcb-struct-predicate xcb-struct)
+(define (xcb-struct-for-rec rec)
+  (define rtd (record-type-descriptor rec))
+  ((record-accessor rtd 'xcb-struct-type) rec))
+
+(define (xcb-struct-predicate xcb-struct) 
   (record-predicate (inner-type xcb-struct)))
+
+(define-public xref
+  (case-lambda
+    ((rec field)
+     ((xcb-struct-accessor (xcb-struct-for-rec rec) field) rec))
+    ((rec field n)
+     ((xcb-struct-accessor (xcb-struct-for-rec rec) field) rec n))))
+
+(define-public xset!
+  (case-lambda
+    ((rec field val)
+     ((xcb-struct-modifier (xcb-struct-for-rec rec) field) rec val))
+    ((rec field n val)
+     ((xcb-struct-modifier (xcb-struct-for-rec rec) field) rec n val))))
 
 (define (xcb-struct-accessor xcb-struct field-tag)
   (define (maybe-unbox val) 
     (define opaque? (xcb-type-opaque? (typed-value-type val)))
     (if opaque? val (typed-value-value-or-enum val)))
-  (lambda (rec)
+  (define (accessor rec)
     (define value ((record-accessor (inner-type xcb-struct) field-tag) rec))
-    (if (vector? value) (vector-map maybe-unbox value) (maybe-unbox value))))
-
-(define* ((xcb-struct-vector-accessor xcb-struct field-tag) rec #:optional n)
-  (define vec ((xcb-struct-accessor xcb-struct field-tag) rec))
-  (if n (vector-ref vec n) vec))
+    (if (vector? value) (vector-map maybe-unbox value) (maybe-unbox value)))
+  (case-lambda
+    ((rec) (accessor rec))
+    ((rec n) (vector-ref (accessor rec) n))))
 
 (define (xcb-maybe-get-from-enum xcb-type arg)
-  (define (mask-or mask) (apply xcb-enum-or mask arg))
+  (define (mask-or mask) (apply xenum-or mask arg))
   (define (enum-get enum) 
-    (or (xcb-enum-get enum arg)
+    (or (xenum-ref enum arg)
         (if (xcb-type-require-enum? xcb-type)
             (error "xcb-xml: No enum value with name " arg)
             arg)))
@@ -314,20 +277,19 @@ as an xcb list type" value))
    ((xcb-type-enum xcb-type) => enum-get)
    (else arg)))
 
-(define* ((xcb-struct-modifier xcb-struct field-tag) rec arg)
-  "Returns a proc that modifies the value of field FIELD-TAG in an instance
-of XCB-STRUCT"
+(define (xcb-struct-modifier xcb-struct field-tag)
   (define xcb-type (hashq-ref (types xcb-struct) field-tag))
   (define modifier (record-modifier (inner-type xcb-struct) field-tag))
-  (modifier rec (type-wrap arg xcb-type)))
-
-(define* ((xcb-struct-vector-modifier xcb-struct field-tag)
-          rec n #:optional arg)
-  (define xcb-type (hashq-ref (types xcb-struct) field-tag))
-  (define modifier (record-modifier (inner-type xcb-struct) field-tag))
-  (define accessor (record-accessor (inner-type xcb-struct) field-tag))
-  (if (not arg) (modifier rec n) 
-      (vector-set! (accessor rec) n (type-wrap arg xcb-type))))
+  (case-lambda 
+    ((rec val)
+     (define wrapped 
+       (if (xcb-type-list? xcb-type) 
+           (vector-map (lambda (el) (type-wrap el xcb-type)) val)
+           (type-wrap val xcb-type)))
+     (modifier rec wrapped))
+    ((rec n val)
+     (define accessor (record-accessor (inner-type xcb-struct) field-tag))
+     (vector-set! (accessor rec) n (type-wrap val xcb-type)))))
 
 (define (check-list-length xcb-struct rec field value alist)
   (define list-length (cadddr field))
@@ -356,7 +318,8 @@ of XCB-STRUCT"
     ((vector? value)
      (check-list-length xcb-struct rec field value alist)
      (vector-for-each pack-value value)
-     (if (eq? (typed-value-type (vector-ref value 0)) char)
+     (if (and (> (vector-length value) 0)
+              (eq? (typed-value-type (vector-ref value 0)) char))
          (write-pad-bytes 
           (- (ceiling-remainder (vector-length value) 4)))))
     (else (pack-value value))))  
@@ -412,7 +375,9 @@ of XCB-STRUCT"
    (else (modify-or-return))))
 
 (define-public (xcb-struct-unpack xcb-struct port)
-  (define rec ((record-constructor (inner-type xcb-struct) '())))
+  (define rec ((record-constructor 
+                (inner-type xcb-struct)
+                '(xcb-struct-type)) xcb-struct))
   (define (unpack-switch switch) 
     (define values (switch-unpack switch xcb-struct rec '() port))
     (define modifier 
@@ -424,7 +389,7 @@ of XCB-STRUCT"
   rec)
 
 (define-public (valueparam enum els)
-  (define (number-replace el) (cons (xcb-enum-get enum (car el)) (cdr el)))
+  (define (number-replace el) (cons (xenum-ref enum (car el)) (cdr el)))
   (define with-numbers (map number-replace els))
   (define sorted (sort with-numbers (lambda (el1 el2) (< (car el1) (car el2)))))
   (values

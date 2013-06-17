@@ -49,7 +49,7 @@
 (define-public (typed-value-value-or-enum typed-val)
   (define value (typed-value-value typed-val))
   (define type (typed-value-type typed-val))
-  (define (enum-lookup enum) (or (xcb-enum-key-get enum value) value))
+  (define (enum-lookup enum) (or (xenum-key-ref enum value) value))
   (define (mask-lookup mask)
     (define (mask-lookup key bit) (if (> (logand value bit) 0) key #f))
     (delq #f (hash-map->list mask-lookup (key-value-hash mask))))
@@ -243,8 +243,15 @@
 (define (xcb-enum-predicate enum)
   (type-predicate
    (lambda (val)
-     (if (xcb-enum-key-get enum val) #t
+     (if (xenum-key-ref enum val) #t
 	 #f))))
+
+(define-public (xid= x1 x2)
+  (and
+   (eq? (typed-value-type x1)
+        (typed-value-type x2))
+   (= (typed-value-value x1)
+      (typed-value-value x2))))
 
 (define-public (enum-type type enum require-enum?)
   ((record-constructor xcb-type '(name predicate pack unpack opaque? list? mask enum require-enum?))

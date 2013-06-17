@@ -31,10 +31,6 @@
             types
             switch
             make-xcb-struct
-            set-accessors!
-            set-modifiers!
-            accessors
-            modifiers
             get-constructor-args
             field-value-expressions
             field-order
@@ -80,15 +76,11 @@
    field-value-expressions
    list-length-expressions
    constructor-args
-   field-order
-   accessors
-   modifiers)
+   field-order)
   xcb-struct?
   (inner-type inner-type)
   (switch switch)
   (types types)
-  (accessors accessors set-accessors!)
-  (modifiers modifiers set-modifiers!)
   (field-value-expressions field-value-expressions)
   (list-length-expressions list-length-expressions)
   (constructor-args get-constructor-args)
@@ -101,7 +93,7 @@
    (for-each 
     (lambda (field)
       (let ((field-name (car field))
-            (field-type (cadr field)))
+            (field-type (hashq-ref (types rec) (car field))))
         (format port " ~a: ~a" field-name field-type))) 
     (filter 
      (lambda (field) (not (eq? (car field) '*pad*)))
