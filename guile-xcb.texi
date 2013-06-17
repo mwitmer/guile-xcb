@@ -401,7 +401,7 @@ Returns the numeric value stored in @var{enum} with key @var{key}.
 @end deffn
 
 For fields that are not explicitly marked as using a mask but
-nevertheless require values logir'd together, the procedure
+nevertheless require values logior'd together, the procedure
 @code{xenum-or} is available:
 
 @deffn {Scheme Procedure} xenum-or enum . keys
@@ -437,10 +437,11 @@ Connect to the X server running on @var{display} and
 is used for further interaction with the X server.
 @end deffn
 
-@var{display} should be in the format @samp{:n.p}, where @var{n} is
-the display number and @var{p} is a screen number. Once the X server
-is running, the variable @var{DISPLAY} with the needed string as its
-value should be defined in the shell enivronment.
+@var{display} should be in the format @samp{:n.p} or simply @samp{:n},
+where @var{n} is the display number and @var{p} is a screen number.
+When an X server is running, the variable @var{DISPLAY} with the
+needed string as its value should be defined in the shell enivronment,
+and that value is used by default.
 
 @deffn {Scheme Procedure} xcb-disconnect! xcb-conn
 Close the connection to the X server represented by @var{xcb-conn}
@@ -524,7 +525,7 @@ are referred to as a valueparam. For every bit set in the value mask,
 the X server will read off an element from the value list.
 
 In the C implementation of XCB, the user has combine values from an
-enum using @code{||} in order to generate the value mask, and then
+enum using @code{|} in order to generate the value mask, and then
 create a list of values in the correct order to match the bits in the
 mask.
 

@@ -13,6 +13,10 @@
  ;;    You should have received a copy of the GNU General Public License
  ;;    along with Guile XCB.  If not, see <http://www.gnu.org/licenses/>.
 
+;;; Simple window creation and event handling sample: create a 200x200
+;;; window with white background and display the keycodes of
+;;; key-presses and key-releases inside it. Press <ESC> to quit.
+
 (define-module (xcb xml sample win)
   #:use-module (xcb xml)
   #:use-module (xcb event-loop)

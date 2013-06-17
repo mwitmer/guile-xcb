@@ -13,6 +13,20 @@
  ;;    You should have received a copy of the GNU General Public License
  ;;    along with Guile XCB.  If not, see <http://www.gnu.org/licenses/>.
 
+;;; tinywm implementation for Guile XCB
+;;;
+;;; Press Alt-F1 to send the current window to the back
+;;; Hold Alt-Left Mouse Button to drag the window around
+;;; Hold Alt-Right Mouse Button to resize the window
+;;; Ctrl-Alt-q to Quit
+;;;
+;;; To start a program, use the function `wm-shell-command' in the
+;;; REPL that appears at startup with the name of the command as the
+;;; argument.
+;;;
+;;; Add a line like this to your .xinitrc to use this window manager:
+;;; exec guile -s /PATH/TO/tinywm.scm
+
 (define-module (xcb xml sample tinywm)
   #:use-module (system repl server)
   #:use-module (xcb xml xproto)
@@ -93,8 +107,7 @@
     (ConfigureWindow 
      xcb-conn (win) ConfigWindow 
      `((StackMode . ,(xenum-ref StackMode 'Below)))))
-   ((= (xref key-press 'detail) 24)
-    (terminated? #t))))
+   ((= (xref key-press 'detail) 24) (terminated? #t))))
 
 (xcb-listen! xcb-conn MotionNotify-event on-motion-notify)
 (xcb-listen! xcb-conn ButtonRelease-event on-button-release)

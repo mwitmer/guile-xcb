@@ -128,7 +128,7 @@
   (define (handle-additional-authentication
            xcb-conn auth-method auth-data response)
     (format #t "X server requires additional authentication. Reason: ~a"
-            (xcb->string (xcb-ref response 'reason)))
+            (xcb->string (xref response 'reason)))
     (error "xml-xcb: Additional authentication not supported at this time"))
 
   (define (xcb-setup-unpack port)
@@ -184,7 +184,7 @@
         (enable-big-requests xcb-conn)
         (enable-xc-misc xcb-conn)
         (enable-generic-events xcb-conn)
-        (let ((max-length (xcb-ref reply 'maximum_request_length)))
+        (let ((max-length (xref reply 'maximum_request_length)))
           (set-original-maximum-request-length! xcb-conn max-length)
           (set-maximum-request-length! xcb-conn max-length))
         xcb-conn)

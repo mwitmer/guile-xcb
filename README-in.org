@@ -32,12 +32,11 @@ this distribution.
 * Project Status and Caveats
 
 - The full XCB stack is implemented; however, many of the extensions
-  haven't been tested. Version negotiation is up to the user.
+  haven't been tested.
 
-- Extensions that send huge requests, like DRI2 or glx, are probably
-  going to be way too slow for practical use. In a future release,
-  void and byte lists will be represented as bytevectors, not regular
-  vectors.
+- Extensions that send huge requests are probably going to be too slow
+  for practical use. In a future release, void and byte lists will be
+  represented as bytevectors, not regular vectors.
 
 - Guile XCB includes a stripped-down Scheme implementation of Xauth;
   it doesn't pick the "best" authentication method available, just the

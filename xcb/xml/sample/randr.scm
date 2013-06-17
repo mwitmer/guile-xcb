@@ -26,6 +26,9 @@
 ;;;
 ;;; 'print : Print display info a la the xrandr command line tool
 ;;;
+;;; 'rotate output-name ROTATION-LIST: Apply a list of rotations to
+;;; the given output
+;;;
 ;;; 'resolution output-name width height : Update the resolution for
 ;;; monitor OUTPUT-NAME to WIDHTxHEIGHT pixels (must be a valid
 ;;; resolution).
@@ -39,7 +42,6 @@
 ;;; Example:
 ;;;
 ;;; (xrandr 'resolution "VGA-0" 1680 1050 'offset "DVI-0" 1680 0)
-;;;
 ;;; Set the resolution of monitor VGA-0 to 1680x1050 and move DVI-0 to (1680, 0)
 
 (define-module (xcb xml sample randr)
@@ -317,6 +319,12 @@ to SetCrtcConfig"))
       ((and=> (get-crtc-for-output output-info) proc) output-info))
     (and=> (get-output-info-by-name output-name) with-output))
 
+  (define (rotate output-name rotation) 
+    (define ((do-it crtc-info) display-info)
+      (xset! crtc-info 'rotation rotation)
+      (mark-xid! (get-crtc-xid crtc-info)))
+    (call-if-crtc-present output-name do-it))
+
   (define (disable output-name) 
     (define ((do-it crtc-info) display-info)
       (xset! crtc-info 'mode (xcb-none MODE))
@@ -348,6 +356,7 @@ to SetCrtcConfig"))
     (define op
       (case (car args)
         ((print) (cons print 0))
+        ((rotate) (cons rotate 2))
         ((resolution) (cons resolution 3))
         ((offset) (cons offset 3))
         ((disable) (cons disable 1))
