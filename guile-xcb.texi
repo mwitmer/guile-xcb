@@ -420,7 +420,8 @@ with an X server are exported from the module (xcb xml).
 @menu
 * Connecting::         Connecting to the X Server
 * Sending Requests::   Putting the X Server to work
-* Events and Errors::  Dealing with input from the outside
+* Replies and Errors::  Getting data back from the X Server
+* Events::  Dealing with input from the outside
 * Using Extensions::   Going beyond the core X protocol
 
 @end menu
@@ -497,24 +498,7 @@ be attached. @inforef{Hooks, Hooks, guile}.
 
 Sending a request to the server does not immediately result in a
 reply. The user must poll the xcb connection for data until the
-reply becomes available.
-
-@deffn {Scheme Procedure} poll-xcb-connection xcb-conn [async?=@code{#f}]
-Receive the next reply, error, or event from the X server connected to
-@var{xcb-conn}. If @var{async?} is set to true, the procedure will
-return @code{#f} if no data is immediately available. Otherwise the procedure
-will block for a response. 
-
-This procedure returns two values---the first is a symbol
-(@code{reply}, @code{error}, or @code{event}) indicating the type of
-structure received from the server. The second value is a thunk. When
-invoked, it will check to see if a non-empty handler hook has been
-registered for the structure. If one is found, it will run the
-hook. It then returns the structure itself.
-@end deffn
-
-Polling the connection directly is too low-level for most
-applications. For a higher-level interface, @xref{The Event Loop}.
+reply becomes available. @xref{Replies and Errors}.
 
 @node Valueparams
 @subsection Valueparams
@@ -559,9 +543,9 @@ the request.
 @subsection Switches
 
 In some X requests and replies, more than one value is considered when
-determining which optional fields should be included. The valueparam
-method is insufficient in such cases, so the XCB developers created a
-more generalized construct called a `switch,' due to its use of
+determining which optional fields should be included. Valueparams are
+insufficient in such cases, so the XCB developers created a more
+generalized construct called a `switch,' due to its use of
 @code{switch} syntax in the C implementation.
 
 Switches can be present in both requests and replies, adding one
@@ -596,11 +580,11 @@ called ``XIDs.'' The client must create the new XIDs that it sends to
 the server.
 
 @deffn {Scheme Procedure} make-new-xid xcb-conn xcb-type
-Generate a new unique identifier for referring to resources maintained
-by the X server connected to @var{xcb-conn}. X requests that instruct
-the server to create, for example, new Windows or Graphical Contexts
-require an XID for the new resource. @var{xcb-type} is an xid type
-such as @code{WINDOW} or @code{GC}.
+Generate a new unique identifier for referring to a resource
+maintained by the X server connected to @var{xcb-conn}. X requests
+that instruct the server to create, for example, new Windows or
+Graphical Contexts require an XID for the new resource. @var{xcb-type}
+is an xid type such as @code{WINDOW} or @code{GC}.
 @end deffn
 
 Sometimes, due to ommissions in the XCB-XML files, replies from the X
@@ -634,8 +618,8 @@ running out of XIDs. @xref{X Extensions Used by Guile XCB}.
 
 Because the X protocol is a binary protocol and everything must be
 expressed numerically, managing complex values and even strings can be
-unwieldy. Guile XCB provides a very limited selection of methods and
-values to simply these tasks.
+unwieldy. Guile XCB provides a few procedures and values to simply
+these tasks.
 
 @deffn {Scheme Variable} xcb-current-time
 Alias for the value zero to use in fields that describe X timestamps;
@@ -664,68 +648,126 @@ Convert a vector of xcb bytes into a UTF-8 string.
 Convert a UTF-16 string into a vector of xcb double-width chars.
 @end deffn
 
-@node Events and Errors
-@section Events and Errors
+@node Replies and Errors
+@section Replies and Errors
 
-Events and errors from the X server are received as a result of calls
-to @code{poll-xcb-connection}. They are represented with XCB
-structures just like requests and replies.
+Many X requests elicit replies from the X server. Because the X
+protocol is asynchronous, the client must check its connection with
+the server periodically to see if any replies, errors, or events
+have arrived.
 
-Clients may handle each event or error individually as it arrives from
-the X server, or, using @code{xcb-listen!} and @code{xcb-unlisten!},
-they may attach handler functions to a hook that is run when a
-particular type of error or event is received from the X server.
+@deffn {Scheme Procedure} poll-xcb-connection xcb-conn [async?=@code{#f}]
+Receive the next reply, error, or event from the X server connected to
+@var{xcb-conn}. If @var{async?} is @code{#t}, the procedure will
+return @code{#f} if no data is immediately available. Otherwise the procedure
+will block for a response. 
 
-@deffn{Scheme Procedure} xcb-listen! xcb-conn struct proc [replace?=@code{#f}]
+This procedure returns two values---the first is a symbol
+(@code{reply}, @code{error}, or @code{event}) indicating the type of
+structure received from the server. The second value is a thunk. When
+invoked, it will check to see if a handler hook has been registered
+for the structure. If one is found, it will run the hook. It then
+returns the structure itself.
+@end deffn
 
-Add @var{proc} to the hook executed when an event or error with xcb
-structure @var{struct} is received from the X server connected to
-@var{xcb-conn}. If @var{replace?} is @code{#t}, clear the hook
+A reply from the X server is another xcb struct, this time with a name
+in the form @code{@var{request-name}-reply}, such as
+@code{QueryExtension-reply} or @code{GetWindowAttributes-reply}.
+
+When something goes wrong while the X server processes a request,
+either because of faulty data provided by the client or an internal
+error, the X server may send an error message in place of a reply.
+Errors have names in the form @code{@var{ERROR-NAME}-error}, such as
+@code{Alloc-error} and @code{Value-error}.
+
+Calling an X request function returns a function hook, which can be
+used to connect errors and replies to the request that solicited
+them. A call to @code{poll-xcb-connection} will return as one of its
+values a thunk that runs all the functions on the hook with the error
+or reply as their argument.
+
+For example, the following code can be used to display whether or not
+the RANDR extension is available on the X server:
+
+@lisp
+(define xcb-conn (xcb-connect!))
+
+(add-hook! 
+  (QueryExtension xcb-conn 5 (string->xcb "RANDR"))
+  (lambda (reply) 
+    (display (xref reply 'present))))
+
+;;; Skip the replies to the initial requests sent out by xcb-connect!
+
+(poll-xcb-connection xcb-conn) 
+(poll-xcb-connection xcb-conn)
+(poll-xcb-connection xcb-conn)
+
+;;; Now the reply to our QueryExtension
+
+(call-with-values
+   (lambda ()
+     (poll-xcb-connection xcb-conn))
+   (lambda (result-type result-thunk)
+     (result-thunk)))
+
+(xcb-disconnect! xcb-conn)
+
+@end lisp
+
+Using @code{poll-xcb-connection} directly is quite
+cumbersome. @pxref{The Event Loop} for a more convenient abstraction.
+
+@node Events
+@section Events
+
+Like replies and errors, events from the X server are received as a
+result of calls to @code{poll-xcb-connection}. They are represented
+with XCB structures just like requests, replies, and errors. Their
+names are in the form @code{@var{event-name}-event}, such as
+@code{KeyPress-event} or @code{FocusIn-event}.
+
+Clients may handle each event individually as it arrives from the X
+server, or, using @code{xcb-listen!} and @code{xcb-unlisten!}, they
+may attach handler functions to a hook that is run when a particular
+type of event is received from the X server.
+
+@deffn{Scheme Procedure} xcb-listen! xcb-conn event proc [replace?=@code{#f}]
+
+Add @var{proc} to the hook executed when a thunk for xcb event
+@var{event} is returned from @code{poll-xcb-connection} and
+evaluted. If @var{replace?} is @code{#t}, clear the hook
 first. Otherwise, repeated calls to this procedure with the same
-@var{struct} will place multiple procedures on the hook.
+@var{event} will place multiple procedures on the hook. @var{xcb-conn}
+is the connection to the X server that will be used in calls to
+@code{poll-xcb-connection}.
 @end deffn
 
-@deffn{Scheme Procedure} xcb-unlisten! xcb-conn struct [proc=@code{#f}] 
+@deffn{Scheme Procedure} xcb-unlisten! xcb-conn event [proc=@code{#f}] 
 
-If @var{proc} is a procedure, remove that particular procedure from
-the hook that executes when an error or event of xcb structure
-@var{struct} is received from the X server connected to
-@var{xcb-conn}. If @var{proc} is @code{#f}, clear the hook entirely.
+If @var{proc} is a procedure, remove that particular procedure, if
+present, from @var{event}'s handler hook on @var{xcb-conn}. If
+@var{proc} is @code{#f}, clear the hook entirely.
 @end deffn
 
-A client can also register default handlers for errors and events that
-are not otherwise handled:
+A client can also register default handlers for events that are not
+otherwise handled:
 
-@deffn{Scheme Procedure} xcb-error-listen-default! xcb-conn proc [replace?=@code{#f}] 
-
-Listen for unregistered errors from the X server connected to
-@var{xcb-conn} and execute @var{proc} when one is encountered, with
-the reply as its argument. If @var{replace?} is @code{#t}, remove all
-other procedures from the hook.
-@end deffn
-
-@deffn{Scheme Procedure} xcb-event-listen-default! xcb-conn proc [replace?=@code{#f}] 
+@deffn{Scheme Procedure} xcb-listen-default! xcb-conn proc [replace?=@code{#f}] 
 
 Listen for unregistered events from the X server connected to
-@var{xcb-conn} and execute @var{proc} when one is encountered, with
-the reply as its argument. If @var{replace?} is @code{#t}, remove all
-other procedures from the hook.
+@var{xcb-conn} and execute @var{proc} when a thunk for one is
+encountered, with the event instance as its argument. If
+@var{replace?} is @code{#t}, remove all other procedures from the
+hook.
 @end deffn
 
-@deffn{Scheme Procedure} xcb-error-unlisten-default! xcb-conn [proc=#f]
-
-If @var{proc} is @code{#f}, remove all procedures from
-@var{xcb-conn}'s default error handler hook. If @var{proc} is a
-procedure, attempt to remove it from the hook.
-@end deffn
-
-@deffn{Scheme Procedure} xcb-event-unlisten-default! xcb-conn [proc=#f]
+@deffn{Scheme Procedure} xcb-unlisten-default! xcb-conn [proc=#f]
 
 If @var{proc} is @code{#f}, remove all procedures from
 @var{xcb-conn}'s default event handler hook. If @var{proc} is a
 procedure, attempt to remove it from the hook.
 @end deffn
-
 
 @node Using Extensions
 @section Using Extensions
@@ -751,8 +793,9 @@ module.
 @deffn{Scheme Procedures} xcb-enable-EXTENSION-NAME! xcb-conn [proc=@code{#f}] 
 
 Lazily enable the X extension with name @var{extension-name} for the X
-connection represented by @var{xcb-conn}. If @var{proc} is a procedure,
-call @var{proc} with the QueryExtension reply once it has been received.
+connection connected to @var{xcb-conn}. If @var{proc} is a
+procedure, call @var{proc} with the QueryExtension reply once it has
+been received.
 
 Returns an xcb-await promise, which when forced, returns @code{#t} or
 the result of @var{proc} (when provided) if the extension is
@@ -767,7 +810,7 @@ xcb connection.
 
 @deffn {Scheme Procedure} xcb-connection-has-extension? xcb-conn ext-name
 Return @code{#t} if an op code has been received from the X server
-connection to @var{xcb-conn} for extension with name
+connected to @var{xcb-conn} for extension with name
 @var{ext-name}. @var{ext-name} should be a symbol corresponding to the
 value of the @code{header} attribute in the extension's XML file.
 @end deffn
@@ -777,15 +820,16 @@ server; enabling an extension simply provides the xcb connection with
 the opcode, first event number, and first error number necessary for
 further interaction with the extension.
 
-Several X Extensions will bind the same variable name to different
-values. Modules that import extensions with conflicting definitions
-should use @code{#:rename} as appropriate. @inforef{Using Guile
-Modules, Using Guile Modules, guile}.
+Most X extensions will export some bindings that conflict with those
+exported by other X extensions. Modules that import extensions with
+conflicting definitions should use @code{#:rename} as
+appropriate. @inforef{Using Guile Modules, Using Guile Modules,
+guile}.
 
 @node X Extensions Used by Guile XCB
 @subsection X Extensions Used by Guile XCB
 
-Guile XCB uses two X extensions internally to provide a more flexible
+Guile XCB uses three X extensions internally to provide a more flexible
 client library to its users:
 
 @itemize
@@ -793,8 +837,8 @@ client library to its users:
 BIG-REQUESTS: In the core X protocol, requests are limited in size to
 around 260KB. To support certain extensions that require longer
 requests, the big requests extension was created to allow requests up
-to 16GB. Guile XCB will automatically use big requests if they are
-available.
+to 16GB. Guile XCB will automatically use big requests when necessary
+if they are available.
 
 @item
 XC_MISC: The X server supports a limited number of XIDs per connection; if the
@@ -810,19 +854,19 @@ available. To circumvent both of these limitations, the Generic Event
 Extension turns the event with opcode 35 into a special generic event,
 which receives a standard header describing the contents of more
 specific events, which can be longer than the original 32-byte limit.
-Guile XCB understands generic events, although they will not
-necessarily be sent by any extensions in use by a particular client.
+Guile XCB understands generic events, although they are only output
+by a small subset of the available extensions.
 @end itemize
 
 @node Writing Guile XCB Applications
 @chapter Writing Guile XCB Applications
 
 The previously defined procedures for sending and receiving X data are
-all one needs to write X applications. However, keeping track of
-sequence numbers, polling, and so on can be distracting and
-cumbersome. Guile XCB provides a basic framework for running an event
-loop and describing in advance how data from the X server will be
-handled.
+all one needs to write X applications. However, polling the connection
+and handling replies, errors, and events manually can be distracting
+and cumbersome. Guile XCB provides a basic framework for running an
+event loop and describing in advance how data from the X server will
+be handled.
 
 @menu
 * The Event Loop::
@@ -846,8 +890,8 @@ Repeatedly poll the X server connected to @var{xcb-conn} for reply,
 event, and error thunks until the value of parameter @var{sentinel}
 changes in any way (even to @code{#f}).
 
-If @var{defer?} is @code{#t}, reply thunks are evaluted immediately, while
-event and error thunks are queued and evaluted after the loop
+If @var{defer?} is @code{#t}, reply and error thunks are evaluted
+immediately, while event thunks are queued and evaluted after the loop
 exits. Otherwise, thunks are evaluated in the order they are received.
 @end deffn
 
@@ -864,31 +908,31 @@ encapsulate that behavior in familiar Scheme primitives.
 
 @deffn {Scheme Syntax} xcb-await ((reply (request xcb-conn args ...)) ...) exprs ...
 Send each @var{request} using X connection @var{xcb-conn} and
-arguments @var{args}. Lazily evalute @var{exprs} as a handler
-procedure with every @var{reply} bound to the reply of its
-corresponding @var{request} at the point in the future when all
-replies have been received.
+arguments @var{args}. Nothing further will happen immediately, but
+when a call to @code{poll-xcb-connection} receives the last expected
+response, @var{exprs} will be evaluted, with each @var{reply} bound to
+the reply or error of its corresponding @var{request}.
 
 Evaulates to a promise that when forced will execute a deferring event
-loop until all the replies are received. @xref{The Event Loop}. Once
-it has been forced, the promise stores and returns the result of the
-reply handler.
+loop until all the replies are received and @var{exprs} are
+evaluted. @xref{The Event Loop}. Once it has been forced, the promise
+stores and returns the result of the reply handler.
 @end deffn
 
 A useful feature of @code{xcb-await} is that the promise to which it
 evaluates can be forced at any time and any number of times, and the
 handler will only ever be evaluated once. This is true even if the
 replies are received and handled due to some other event loop or
-another use of @code{poll-xcb-connection}. @footnote{Note that the
+other use of @code{poll-xcb-connection}. @footnote{Note that the
 reply handler may be called as a result of @emph{any} call to
 @code{poll-xcb-connection}---not just when the promise is explicitly
 being forced.}
 
 @deffn {Scheme Syntax} xcb-later request xcb-conn args ...
 Sends @var{request} using X connection @var{xcb-conn} and arguments
-@var{args}. Evaluates to a promise that runs a deferring event loop
-and blocks until the response is received and returns the server's
-reply.
+@var{args}. Evaluates to a promise that, when forced, runs a deferring
+event loop and blocks until the response is received. The promise then
+evalutes to the server's response.
 @end deffn
 
 @deffn {Scheme Syntax} xcb-now request xcb-conn args ...
@@ -898,8 +942,8 @@ Syntactic sugar for (force (xcb-later request xcb-con args ...)).
 @node Built-in XCB Documentation
 @section Built-in XCB Documentation
 
-In addition to providing a specification of the X protocol, the X
-protocol XML files may also contain documentation. Guile XCB allows
+In addition to providing a specification of the X protocol, some of
+the X protocol XML files also contain documentation. Guile XCB allows
 the user to interactively peruse this documentation, and provides some
 helpful documentation features of its own.
 
@@ -918,18 +962,16 @@ cross-references.
 
 @deffn {Scheme Procedure} document-full header item-type name
 Display the full documentation for an XCB element @var{name} of type
-@var{item-type} (@code{'enum}, @code{'request}, @code{'reply},
+@var{item-type} (@code{enum}, @code{request}, @code{reply},
 etc.). @var{header} is an all lower-case symbol identifying the
-extension to search for documentation (@code{'xproto}, @code{'bigreq},
-@code{'glx}, etc.).
+extension to search for documentation (@code{xproto}, @code{bigreq},
+@code{glx}, etc.). @var{header} and @var{item-type} are symbols and
+@var{name} is a string.
 @end deffn
 
 @deffn {Scheme Procedure} document-brief header item-type name
-Display brief documentation for an XCB element @var{name} of type
-@var{item-type} (@code{'enum}, @code{'request}, @code{'reply},
-etc.). @var{header} is an all lower-case symbol identifying the
-extension to search for documentation (@code{'xproto}, @code{'bigreq},
-@code{'glx}, etc.).
+Display brief documentation for an XCB element. Arguments are the same
+as in @code{document-full}.
 @end deffn
 
 Unfortunately, the XCB documentation for extensions is far from
@@ -941,7 +983,7 @@ provided are also written in C but translate easily enough to Scheme.
 
 Information about various XCB requests, structures, types, enums, and
 so on can be viewed by evaluating the name of the variable at the
-REPL. The record type printers provide, for example, a list of fields
+REPL. The record type printers output, for example, a list of fields
 and types for structures, and a list of keys and values for enums.
 
 The underlying structure used to send a request to the server has the

@@ -6,14 +6,14 @@
 
 * Overview
 
-Guile XCB is an X client library written entirely in Guile. It makes
+Guile XCB is an X11 client library written entirely in Guile. It makes
 use of the Guile compiler and virtual machine to turn XML descriptions
 of the X protocol provided by the XCB project into Guile object code
-files. These files can be loaded into a process as conventional
-modules.
+files.
 
-Support is included for the core X protocol as well as many of its
-extensions.
+Support is included for the core X protocol and twenty-seven
+extensions. Guile XCB also includes some simple code for running
+asynchronous event loops.
 
 * Samples and Documentation
 
@@ -29,18 +29,25 @@ directory. They include:
 More detailed documentation resides in the texinfo manual included in
 this distribution.
 
+* Installation and Prerequisites
+
+You can use the typical ./configure, make, make install chain to build
+Guile XCB.
+
+Guile XCB requires the latest release of Guile (2.0.9).
+
 * Project Status and Caveats
 
 - The full XCB stack is implemented; however, many of the extensions
   haven't been tested.
 
-- Extensions that send huge requests are probably going to be too slow
+- Extensions that send large requests are probably going to be too slow
   for practical use. In a future release, void and byte lists will be
   represented as bytevectors, not regular vectors.
 
-- Guile XCB includes a stripped-down Scheme implementation of Xauth;
-  it doesn't pick the "best" authentication method available, just the
-  first.
+- Guile XCB includes a stripped-down Scheme implementation of Xauth
+  that only supports UNIX sockets for now; it doesn't pick the "best"
+  authentication method available, just the first.
 
 - XPRINT is excluded because it's deprecated and its XML file has just
   enough special cases in it that it wasn't worth including. Some
