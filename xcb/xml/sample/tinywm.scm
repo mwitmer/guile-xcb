@@ -81,25 +81,29 @@
 (define (on-button-release button-release) 
   (UngrabPointer xcb-conn xcb-current-time))
 
-(define (on-button-press button-press)
-  (win (xref button-press 'child))
+(define (on-window-click window button-press)
   (ConfigureWindow 
-   xcb-conn (win) ConfigWindow 
+   xcb-conn window ConfigWindow 
    `((StackMode . ,(xenum-ref StackMode 'Above))))
-  (xcb-await ((geom (GetGeometry xcb-conn (win))))
+  (xcb-await ((geom (GetGeometry xcb-conn window)))
     (cond
      ((= (xref button-press 'detail) 1)
       (action 'move)
-      (WarpPointer xcb-conn (xcb-none WINDOW) (win) 0 0 0 0 1 1))
+      (WarpPointer xcb-conn (xcb-none WINDOW) window 0 0 0 0 1 1))
      (else
       (action 'resize)
       (WarpPointer 
-       xcb-conn (xcb-none WINDOW) (win) 0 0 0 0 
+       xcb-conn (xcb-none WINDOW) window 0 0 0 0 
        (xref geom 'width)
        (xref geom 'height))))
     (GrabPointer
      xcb-conn #f root '(ButtonRelease ButtonMotion PointerMotionHint)
      'Async 'Async root (xcb-none CURSOR) xcb-current-time)))
+
+(define (on-button-press button-press)
+  (win (xref button-press 'child))
+  (if (not (= (xid->integer (win)) 0)) 
+      (on-window-click (win) button-press)))
 
 (define (on-key-press key-press)
   (cond
