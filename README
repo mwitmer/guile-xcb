@@ -41,8 +41,8 @@ _________________
   - tinywm.scm: A Guile XCB implementation of tinywm
   - win.scm: A simple demonstration of creating a window and receiving
     events
-  - randr.scm: Examine the physical displays the X server knows about
-    and the virtual screens mapped to them
+  - randr.scm: A subset of the xrandr command line tool's functionality
+
 
   More detailed documentation resides in the texinfo manual included in
   this distribution.
