@@ -16,7 +16,7 @@
                           make-xid))
   #:use-module ((xcb xml union) #:select (xunion-ref))
   #:use-module ((xcb xml struct) #:select (xref xset!))
-  #:use-module ((xcb xml enum) #:select (xenum-or xenum-ref))
+  #:use-module ((xcb xml enum) #:select (xenum-or xenum-ref xenum-key-ref))
   #:use-module (xcb xml type)
   #:use-module ((xcb xml records) #:select (make-typed-value typed-value-value))
   #:re-export (make-xid
@@ -26,6 +26,7 @@
                xcb->string
                xid=
                xenum-ref
+               xenum-key-ref
                xenum-or
                xcb-bytes->string
                document-full
