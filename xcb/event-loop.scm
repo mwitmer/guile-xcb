@@ -27,7 +27,6 @@ exits. Otherwise, thunks are evaluated in the order they are
 received."
   (define not-ready '(not-ready))
   (define event-q (make-q))
-  (define (drain-q! q) (if (not (q-empty? q)) (begin ((deq! q)) (drain-q! q))))
   (parameterize ((sentinel not-ready))
     (while (eq? (sentinel) not-ready)
       (receive (type val) (poll-xcb-connection xcb-conn)
@@ -35,23 +34,35 @@ received."
           ((event) (if defer? (enq! event-q val) (val)))
           ((error) (val))
           ((reply) (val)))))
-    (drain-q! event-q)
+    (let drain-q! ()
+      (when (not (q-empty? event-q))  
+        ((deq! event-q))
+        (drain-q!)))
     (sentinel)))
 
 (define-syntax xcb-await
   (syntax-rules ()
     ((_ ((reply (proc xcb-conn arg ...))) expr ...)
-     (let ((result (make-parameter #f)))
+     (let* ((awaiting '(awaiting))
+            (result (make-parameter awaiting)))
        (add-hook! (proc xcb-conn arg ...) 
                   (lambda (r) (result ((lambda (reply) expr ...) r))))
-       (delay (xcb-event-loop xcb-conn result #t))))
+       (delay 
+         (if (eq? (result) awaiting)
+             (xcb-event-loop xcb-conn result #t)
+             (result)))))
     ((_ ((reply (proc xcb-conn arg ...))
 
          (reply* (proc* xcb-conn* arg* ...)) ...)
         expr ...)
-     (let ((inner-result (make-parameter #f))
-           (inner-result-wait
-            (delay (force (xcb-event-loop xcb-conn inner-result #t)))))
+     (let* ((awaiting '(awaiting))
+            (inner-result (make-parameter awaiting))
+            (inner-result-wait
+             (delay
+               (force
+                (if (eq? inner-result awaiting)
+                    (xcb-event-loop xcb-conn inner-result #t)
+                    (inner-result))))))
       (add-hook! 
        (proc xcb-conn arg ...)
        (lambda (reply) 
