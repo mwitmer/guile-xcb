@@ -19,7 +19,7 @@
   #:use-module (xcb event-loop)
   #:use-module (rnrs bytevectors)
   #:use-module ((rnrs base) #:select (vector-map))
-  #:use-module ((xcb xml struct) #:select (xref))
+  #:use-module ((xcb xml struct) #:select (xref xset!))
   #:use-module (xcb xml type)
   #:use-module (xcb xml enum)
   #:use-module (xcb xml xproto)
@@ -67,8 +67,8 @@
      (fold-right
       (lambda (el prev)  
 	(cons (make-CHAR2B 
-	       (bytevector-u8-ref str-bv el)
-	       (bytevector-u8-ref str-bv (+ el 1))) prev)) 
+	       (bytevector-u8-ref str-bv (+ el 1))
+	       (bytevector-u8-ref str-bv el)) prev)) 
       '() (iota (string-length str) 0 2)))))
 
 (define-public (next-xid-value xcb-conn)
@@ -102,8 +102,7 @@
       (if (and (= xid-start 0) (= xid-count 1))
           (error "xml-xcb: Not more xids available!"))
       (set-xcb-connection-last-xid! xcb-conn xid-start)
-      (Setup-set-resource_id_mask! 
-       setup (* (+ xid-start (- xid-count 1)) inc))
+      (xset! setup 'resource_id_mask! (* (+ xid-start (- xid-count 1)) inc))
       xid-start)))
 
 (define-public (enable-xc-misc xcb-conn) (xcb-enable-xc_misc! xcb-conn))

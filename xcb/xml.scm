@@ -8,7 +8,7 @@
   #:use-module ((xcb xml doc) #:select (document-full document-brief))
   #:use-module ((xcb xml auth) #:select (xcb-connect! xcb-disconnect!))
   #:use-module ((xcb xml core) 
-                #:select (make-new-xid 
+                #:select (make-new-xid
                           xcb->string
                           xcb-bytes->string
                           string->xcb
