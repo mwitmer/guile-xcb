@@ -4,32 +4,41 @@
   #:use-module (ice-9 control)
   #:use-module (srfi srfi-9)
   #:use-module (xcb xml connection)
-  #:export (event-loop with-replies with-connection loop-with-connection))
+  #:export (event-loop with-replies with-connection
+                       loop-with-connection event-loop-prepare!))
 
 (define-record-type event-loop-data
   (make-event-loop-data-inner
-   event-default event-handlers reply-handlers error-handlers)
+   event-default event-handlers reply-handlers 
+   error-handlers default-error-handler)
   event-loop-data?
   (event-default event-default set-event-default!)
   (event-handlers event-handlers)
   (reply-handlers reply-handlers)
-  (error-handlers error-handlers))
+  (error-handlers error-handlers)
+  (default-error-handler default-error-handler set-default-error-handler!))
 
 (define-public unknown-event '(unknown-event))
-(define (on-unknown-event event notify) (notify unknown-event))
+(define (on-unknown-event event notify) (notify unknown-event event))
 (define-public default-error-tag (make-parameter '(error)))
 (define-public current-xcb-connection (make-parameter #f))
+
+(define (basic-error-handler cont arg)
+  (throw 'xcb-error arg))
 
 (define (make-event-loop-data)
   (make-event-loop-data-inner
    on-unknown-event (make-hash-table)
-   (make-hash-table) (make-hash-table)))
+   (make-hash-table) (make-hash-table)
+   basic-error-handler))
 
 (define (event-loop-prepared? xcb-conn)
   (not (not (xcb-connection-data xcb-conn))))
 
-(define-public (event-loop-prepare! xcb-conn)
-  (set-xcb-connection-data! xcb-conn (make-event-loop-data)))
+(define* (event-loop-prepare! xcb-conn #:optional error-handler)
+  (define event-loop-data (make-event-loop-data))
+  (if error-handler (set-default-error-handler! event-loop-data error-handler))
+  (set-xcb-connection-data! xcb-conn event-loop-data))
 
 (define-public listen-default!
   (case-lambda
@@ -83,47 +92,59 @@
 (define-public solicit abort)
 
 (define* (event-loop xcb-conn #:optional (proc default-loop-proc))
-  (define conts (make-hash-table))
-  (define early (make-hash-table))
-  (define done? (make-parameter #f))
-  (define finish-tag '(finished))
-  (define (poll)
-    (xcb-connection-flush! xcb-conn)
-    (poll-xcb-connection xcb-conn))
-  (define (notify tag val)
-    (define cont (hashq-ref conts tag))
-    (hashq-remove! conts tag)
-    (if cont (cont val) (hashq-set! early tag val)))
-  (define (dispatch data-type data)
-    (define loop-data (xcb-connection-data xcb-conn))
-    (define events (event-handlers loop-data))
-    (define default (event-default loop-data))
-    (define replies (reply-handlers loop-data))
-    (define errors (error-handlers loop-data))
-    (define dispatch-proc
-      (case data-type
-        ((event) (or (hashq-ref events (xcb-struct data)) default))
-        ((reply) (hashv-ref replies (xcb-sequence-number data)))
-        ((error) (hashv-ref errors  (xcb-sequence-number data)))))
-    (if (and dispatch-proc data) (dispatch-proc (xcb-data data) notify)))
-  (define (new-prompt type data) (% (dispatch type data) loop))
-  (define (loop cont key)
-    (define (on-miss)
-      (hashq-set! conts key cont)
-      (let loop ()
-        (define result (call-with-values poll new-prompt))
-        (if (and (not (done?)) (xcb-connected? xcb-conn)) (loop) result)))
-    (define early-val (hashq-ref early key))
-    (define (use-early-val) (cont early-val) (hashq-remove! early key))
-    (if early-val
-        (use-early-val)
-        (on-miss)))
-  (if (not (event-loop-prepared? xcb-conn)) (event-loop-prepare! xcb-conn))
-  (parameterize ((current-xcb-connection xcb-conn))
-    (% (begin
-        (define result (proc))
-        (done? #t)
-        result) loop)))
+  (define loop-data 
+    (begin
+      (if (not (event-loop-prepared? xcb-conn)) (event-loop-prepare! xcb-conn))
+     (xcb-connection-data xcb-conn)))
+  (call-with-prompt 
+   (default-error-tag)
+   (lambda ()
+     (define conts (make-hash-table))
+     (define early (make-hash-table))
+     (define done? (make-parameter #f))
+     (define finish-tag '(finished))
+     (define (on-error err) 
+       (abort-to-prompt (default-error-tag) err))
+     (define (poll)
+       (xcb-connection-flush! xcb-conn)
+       (poll-xcb-connection xcb-conn))
+     (define (notify tag val)
+       (define cont (hashq-ref conts tag))
+       (if (eq? tag (default-error-tag)) (on-error val))
+       (hashq-remove! conts tag)
+       (if cont (cont val) (hashq-set! early tag val)))
+     (define (dispatch data-type data)
+       (define events (event-handlers loop-data))
+       (define default (event-default loop-data))
+       (define replies (reply-handlers loop-data))
+       (define errors (error-handlers loop-data))
+       (define dispatch-proc
+         (case data-type
+           ((event) (or (hashq-ref events (xcb-struct data)) default))
+           ((reply) (hashv-ref replies (xcb-sequence-number data)))
+           ((error) (hashv-ref errors  (xcb-sequence-number data)))))
+       (if (and dispatch-proc data) (dispatch-proc (xcb-data data) notify)))
+     (define (new-prompt type data) (% (dispatch type data) loop))
+     (define (loop cont key)
+       (define (on-miss)
+         (hashq-set! conts key cont)
+         (let loop ()
+           (define result (call-with-values poll new-prompt))
+           (if (and (not (done?)) (xcb-connected? xcb-conn)) (loop) result)))
+       (define early-val (hashq-ref early key))
+       (define (use-early-val) (cont early-val) (hashq-remove! early key))
+       (if early-val
+           (use-early-val)
+           (on-miss)))
+     (parameterize ((current-xcb-connection xcb-conn))
+       (define final-result
+         (% (begin
+              (define result (proc))
+              (done? #t)
+              result) loop))
+       (xcb-connection-flush! xcb-conn)
+       final-result))
+   (default-error-handler loop-data)))
 
 (define-public (delay-reply proc . args)
   (define notify-tag `(xcb-cookie ,proc))
@@ -133,6 +154,9 @@
    (lambda (reply notify) (notify notify-tag reply))
    (lambda (error notify) (notify (default-error-tag) error)))
   notify-tag)
+
+(define-public (reply-for proc . args)
+  (solicit (apply delay-reply proc args)))
 
 (define-syntax with-replies
   (syntax-rules ()
