@@ -19,15 +19,15 @@
   #:use-module (xcb xml type)
   #:use-module (xcb event-loop)
   #:use-module ((xcb xml struct) #:select (xref))
-  #:use-module ((xcb xml records) #:select (make-typed-value)) 
+  #:use-module ((xcb xml records) #:select (make-typed-value))
   #:export (enable-extension))
 
 (define (string->xcb str)
-  (list->vector 
+  (list->vector
    (map (lambda (ch) (make-typed-value ch char))
         (string->list str))))
 
-(define* (enable-extension 
+(define* (enable-extension
           xcb-conn name header set-opcode! events errors #:optional proc)
   (define (enable opcode first-event first-error reply)
     (set-opcode! opcode)
@@ -36,10 +36,11 @@
     (let ((result (if proc (proc reply) #t)))
       (xcb-connection-use-extension! xcb-conn header)
       result))
-  (xcb-await xcb-conn
+  (parameterize ((current-xcb-connection xcb-conn))
+   (with-replies
     ((reply QueryExtension (string-length name) (string->xcb name)))
     (if (xref reply 'present)
         (enable (xref reply 'major_opcode)
                 (xref reply 'first_event)
                 (xref reply 'first_error) reply)
-       (error "Could not find extension version on server" name))))
+        (error "Could not find extension version on server" name)))))

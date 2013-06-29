@@ -4,7 +4,7 @@
   #:use-module (ice-9 control)
   #:use-module (srfi srfi-9)
   #:use-module (xcb xml connection)
-  #:export (event-loop with-replies with-connection))
+  #:export (event-loop with-replies with-connection loop-with-connection))
 
 (define-record-type event-loop-data
   (make-event-loop-data-inner
@@ -31,21 +31,21 @@
 (define-public (event-loop-prepare! xcb-conn)
   (set-xcb-connection-data! xcb-conn (make-event-loop-data)))
 
-(define-public listen-default! 
+(define-public listen-default!
   (case-lambda
     ((xcb-conn proc)
      (set-event-default! (xcb-connection-data xcb-conn) proc))
     ((proc)
      (set-event-default! (xcb-connection-data (current-xcb-connection)) proc))))
 
-(define-public unlisten-default! 
+(define-public unlisten-default!
   (case-lambda
     ((xcb-conn)
      (set-event-default! (xcb-connection-data xcb-conn) #f))
     (()
      (set-event-default! (xcb-connection-data (current-xcb-connection)) #f))))
 
-(define-public listen! 
+(define-public listen!
   (case-lambda
     ((xcb-conn struct proc)
      (hashq-set! (event-handlers (xcb-connection-data xcb-conn)) struct proc))
@@ -53,7 +53,7 @@
      (hashq-set! (event-handlers (xcb-connection-data (current-xcb-connection)))
                  struct proc))))
 
-(define-public unlisten! 
+(define-public unlisten!
   (case-lambda
     ((xcb-conn struct)
      (hashq-set! (event-handlers (xcb-connection-data xcb-conn)) struct #f))
@@ -61,21 +61,21 @@
      (hashq-set! (event-handlers (xcb-connection-data (current-xcb-connection)))
                  struct #f))))
 
-(define-public reply-listen! 
+(define-public reply-listen!
   (case-lambda
     ((xcb-conn sequence-number reply-proc error-proc)
      (hashv-set!
-      (reply-handlers (xcb-connection-data xcb-conn)) 
+      (reply-handlers (xcb-connection-data xcb-conn))
       sequence-number reply-proc)
      (hashv-set!
-      (error-handlers (xcb-connection-data xcb-conn)) 
+      (error-handlers (xcb-connection-data xcb-conn))
       sequence-number error-proc))
     ((sequence-number reply-proc error-proc)
      (hashv-set!
-      (reply-handlers (xcb-connection-data (current-xcb-connection))) 
+      (reply-handlers (xcb-connection-data (current-xcb-connection)))
       sequence-number reply-proc)
      (hashv-set!
-      (error-handlers (xcb-connection-data (current-xcb-connection))) 
+      (error-handlers (xcb-connection-data (current-xcb-connection)))
       sequence-number error-proc))))
 
 (define (default-loop-proc) (abort '(forever)))
@@ -120,10 +120,10 @@
         (on-miss)))
   (if (not (event-loop-prepared? xcb-conn)) (event-loop-prepare! xcb-conn))
   (parameterize ((current-xcb-connection xcb-conn))
-    (% ((lambda ()
-          (define result (proc)) 
-          (done? #t)
-          result)) loop)))
+    (% (begin
+        (define result (proc))
+        (done? #t)
+        result) loop)))
 
 (define-public (delay-reply proc . args)
   (define notify-tag `(xcb-cookie ,proc))
@@ -146,17 +146,17 @@
                (define eval-param (lambda (param) (apply param '())))
                (define reply-param (assq-ref replies tag))
                (reply-param val)
-               (let ((results (map-in-order 
+               (let ((results (map-in-order
                                eval-param
                                (map-in-order cdr replies))))
                  (if (not (memq not-ready results))
-                     (notify notify-tag 
-                             (apply (lambda (reply ...) stmt stmt* ...) 
+                     (notify notify-tag
+                             (apply (lambda (reply ...) stmt stmt* ...)
                                     results)))))))
        (reply-listen! (proc (current-xcb-connection) arg ...)
-        (lambda (reply-struct notify) 
+        (lambda (reply-struct notify)
           (update-and-notify 'reply reply-struct notify))
-        (lambda (error-struct notify) 
+        (lambda (error-struct notify)
           (notify (default-error-tag) error-struct)))
        ...
        notify-tag))))
@@ -165,3 +165,8 @@
   (syntax-rules ()
     ((_ xcb-conn stmt ...)
      (event-loop xcb-conn (lambda () stmt ...)))))
+
+(define-syntax loop-with-connection
+  (syntax-rules ()
+    ((_ xcb-conn stmt ...)
+     (event-loop xcb-conn (lambda () stmt ... (solicit '(forever)))))))

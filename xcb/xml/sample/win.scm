@@ -23,41 +23,26 @@
   #:use-module (xcb xml xproto))
 
 (define-public (xcb-sample)
-  (define xcb-conn (xcb-connect!))
-  (define setup (xcb-connection-setup xcb-conn))
-  (define root  (xref setup 'roots 0))
-  (define root-window (xref root 'root))
-  (define my-window (make-new-xid xcb-conn WINDOW))
-  (define my-gc (make-new-xid xcb-conn GCONTEXT))
-  (define terminated? (make-parameter #f))
-
-  (event-loop-prepare! xcb-conn)
-
-  (CreateWindow 
-   xcb-conn 24 my-window root-window 0 0 200 200 0 'CopyFromParent 0 CW
-   `((BackPixel . ,(xref root 'white_pixel))
-     (EventMask 
-      . ,(xenum-or EventMask 'KeyRelease 'KeyPress 'VisibilityChange))))
-
-  (CreateGC xcb-conn my-gc my-window GC 
-            `((Foreground . ,(xref root 'black_pixel))))
-
-  (MapWindow xcb-conn my-window)
-
-  (listen! xcb-conn KeyPress-event
-           (lambda (key-press notify) 
-             (define keycode (xref key-press 'detail))
-             (format #t "KeyPress: ~a\n" keycode)
-             (format #t "KeyRelease: ~a\n" (solicit 'release))
-             (if (= keycode 9) (xcb-disconnect! xcb-conn))))
-
-  (listen! xcb-conn KeyRelease-event
-           (lambda (key-release notify) 
-             (notify 'release (xref key-release 'detail))))
-
-  (listen-default! 
-   xcb-conn
-   (lambda (unknown-event notify)
-     (format #t "Unknown-event: ~a\n" unknown-event)))
-
-  (event-loop xcb-conn))
+  (loop-with-connection (xcb-connect!)
+    (define xcb-conn (current-xcb-connection))
+    (define root (xref (xcb-connection-setup xcb-conn) 'roots 0))
+    (define root-window (xref root 'root))
+    (define my-window (make-new-xid xcb-conn WINDOW))
+    (listen! KeyPress-event
+             (lambda (key-press notify)
+               (define keycode (xref key-press 'detail))
+               (format #t "KeyPress: ~a\n" keycode)
+               (format #t "KeyRelease: ~a\n" (solicit 'release))
+               (if (= keycode 9) (xcb-disconnect! xcb-conn))))
+    (listen! KeyRelease-event
+             (lambda (key-release notify)
+               (notify 'release (xref key-release 'detail))))
+    (listen-default!
+     (lambda (unknown-event notify)
+       (format #t "Unknown-event: ~a\n" unknown-event)))
+    (CreateWindow
+     xcb-conn 24 my-window root-window 0 0 200 200 0 'CopyFromParent 0 CW
+     `((BackPixel . ,(xref root 'white_pixel))
+       (EventMask
+        . ,(xenum-or EventMask 'KeyRelease 'KeyPress))))
+    (MapWindow xcb-conn my-window)))
