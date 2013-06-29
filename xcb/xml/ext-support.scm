@@ -17,8 +17,8 @@
   #:use-module (xcb xml connection)
   #:use-module (xcb xml xproto)
   #:use-module (xcb xml type)
+  #:use-module (xcb event-loop)
   #:use-module ((xcb xml struct) #:select (xref))
-  #:use-module ((xcb event-loop) #:select (xcb-await))
   #:use-module ((xcb xml records) #:select (make-typed-value)) 
   #:export (enable-extension))
 
@@ -36,11 +36,10 @@
     (let ((result (if proc (proc reply) #t)))
       (xcb-connection-use-extension! xcb-conn header)
       result))
-  (xcb-await 
-      ((reply 
-        (QueryExtension xcb-conn (string-length name) (string->xcb name))))
+  (xcb-await xcb-conn
+    ((reply QueryExtension (string-length name) (string->xcb name)))
     (if (xref reply 'present)
         (enable (xref reply 'major_opcode)
                 (xref reply 'first_event)
                 (xref reply 'first_error) reply)
-        (error "Could not find extension version on server" name))))
+       (error "Could not find extension version on server" name))))

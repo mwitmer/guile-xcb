@@ -115,7 +115,7 @@
 		   (enum (,enum #f))
 		   (altenum (,altenum #f))
 		   (mask (,mask #f)))
-		,[expression-match -> expression])
+		,(expression-match -> expression))
      (guard
       (string? name)
       (string? type)
@@ -137,11 +137,11 @@
 
 (define* (reply-match exp request-name #:optional ignore-error?)
   (sxml-match exp
-    ((reply ,[(combine-matchers 
+    ((reply ,((combine-matchers 
 	       valueparam-match 
 	       fields-match
 	       switch-match		  
-	       doc-match) -> reply-fields] ...)
+	       doc-match) -> reply-fields) ...)
      (receive (fields valueparams switches doc)
 	 (partition-elements reply-fields
 			     '((field pad list) 0 #f)
@@ -179,9 +179,9 @@
 
 (define* (valueparam-match exp #:optional ignore-error?)
   (sxml-match exp
-    ((valueparam (@ [value-mask-type ,value-mask-type]
-		    [value-mask-name ,value-mask-name]
-		    [value-list-name ,value-list-name]))
+    ((valueparam (@ (value-mask-type ,value-mask-type)
+		    (value-mask-name ,value-mask-name)
+		    (value-list-name ,value-list-name)))
      (guard
       (string? value-mask-type)
       (string? value-mask-name)
@@ -235,7 +235,7 @@
 			 (enum (,enum #f))
 			 (altenum (,altenum #f))
 			 (mask (,mask #f)))
-		      ,[expression-match -> expression] ...)
+		      ,(expression-match -> expression) ...)
      (guard
       (string? name)
       (string? type)
@@ -262,10 +262,10 @@
 (define* (switch-match exp #:optional ignore-errors?)
   (sxml-match exp
     ((switch (@ (name ,name))
-	     ,[(combine-matchers
+	     ,((combine-matchers
 		bitcase-match
 		expression-match
-		fields-match) -> switch-fields] ...)
+		fields-match) -> switch-fields) ...)
      (guard
       (string? name))
      (receive (bitcases expressions fields)
@@ -289,10 +289,10 @@
 (define* (bitcase-match exp #:optional ignore-errors?)
   (sxml-match exp
     ((bitcase (@ (name (,name #f)))
-	      ,[expression-match -> expression]
-	      ,[(combine-matchers
+	      ,(expression-match -> expression)
+	      ,((combine-matchers
 		 fields-match
-		 switch-match) -> bitcase-fields] ...)
+		 switch-match) -> bitcase-fields) ...)
      (guard
       ((false-or string?) name))
      (receive (fields switches)
@@ -314,9 +314,9 @@
 (define* (item-match exp #:optional ignore-errors?)
   (sxml-match exp
     ((item (@ (name (,name #f)))
-	   ,[(combine-matchers
+	   ,((combine-matchers
 	      doc-match
-	      expression-match) -> expressions-or-docs] ...)
+	      expression-match) -> expressions-or-docs) ...)
      (guard
       ((false-or string?) name))
      (receive (expression doc)
@@ -399,8 +399,8 @@
 (define* (expression-match exp #:optional ignore-errors?)
   (sxml-match exp
     ((op (@ (op ,op))
-	 ,[expression-match -> expression1] 
-	 ,[expression-match -> expression2])
+	 ,(expression-match -> expression1) 
+	 ,(expression-match -> expression2))
      (guard
       (find (lambda (el) (equal? el op)) '("+" "-" "/" "*" "&" "<<")))
      (make-element-syntax
@@ -410,7 +410,7 @@
 			    (,(element-syntax-syntax expression2) field-ref)))
       #f))
     ((unop (@ (op ,op))
-	   ,[expression-match -> expression])
+	   ,(expression-match -> expression))
      (guard (equal? op "~"))
      (make-element-syntax
       'expression
@@ -435,7 +435,7 @@
 	   (lambda (listel) (listel))
 	   (xcb-list-elements ,(string->symbol ref)))))
       #f))
-    ((popcount ,[expression-match -> expression])
+    ((popcount ,(expression-match -> expression))
      (make-element-syntax 
       'expression 
       `(lambda (field-ref) 
@@ -479,7 +479,7 @@
 
 (define* (doc-match exp #:optional ignore-errors?)
   (sxml-match exp
-    ((doc ,[doc-fields-match -> doc-fields] ...)
+    ((doc ,(doc-fields-match -> doc-fields) ...)
      (receive (fields errors see brief description example)
 	 (partition-elements doc-fields 
 			     '(field 0 #f) 
@@ -529,11 +529,6 @@
           (element-syntax-syntax (car valueparams))
           fields)
          fields) switch-syntax))
-  (define hook-syntax
-    `(define hook
-       (xcb-connection-register-reply-hook!
-         xcb-conn ,(if has-reply?
-                       (symbol-append request-name '-reply) #f))))
   (define valueparam-result-syntax
     (if valueparam-syntax 
         `(valueparam valueparam-enum
@@ -548,29 +543,33 @@
      ,struct-syntax
      ,@(if has-reply? (list (element-syntax-syntax (car replies))) '())
      (define-public (,request-name xcb-conn ,@field-argument-names)
-       ,hook-syntax
        (call-with-values (lambda () ,valueparam-result-syntax)
          (lambda (valuemask valuelist)
-           (xcb-connection-send 
-            xcb-conn 
-            (if in-extension? extension-opcode ,(parse-dec-or-hex-integer opcode))
-            (if in-extension? ,(parse-dec-or-hex-integer opcode) #f)
-            (xcb-struct-pack-to-bytevector
-             ,request-struct-name
-             (construct-xcb-struct 
-              ,request-struct-name
-              ,(append 
-                basic-arguments 
-                (if valueparam-syntax 
-                    (list
-                     `(cons (quote ,(assq-ref valueparam-syntax 
-                                              'value-mask-name)) 
-                            valuemask)
-                     `(cons (quote ,(assq-ref valueparam-syntax 
-                                              'value-list-name)) 
-                            valuelist))
-                    '())))))))
-       hook)))
+           (define sequence-number
+             (xcb-connection-send 
+              xcb-conn 
+              (if in-extension? extension-opcode ,(parse-dec-or-hex-integer opcode))
+              (if in-extension? ,(parse-dec-or-hex-integer opcode) #f)
+              (xcb-struct-pack-to-bytevector
+               ,request-struct-name
+               (construct-xcb-struct 
+                ,request-struct-name
+                ,(append 
+                  basic-arguments 
+                  (if valueparam-syntax 
+                      (list
+                       `(cons (quote ,(assq-ref valueparam-syntax 
+                                                'value-mask-name)) 
+                              valuemask)
+                       `(cons (quote ,(assq-ref valueparam-syntax 
+                                                'value-list-name)) 
+                              valuelist))
+                      '()))))))
+           ,(if has-reply?
+                `(xcb-connection-register-reply-struct
+                  xcb-conn sequence-number
+                  ,(symbol-append request-name '-reply)))
+           sequence-number)))))
 
  (define (enable-extension-procname header-symbol)
   ((symbol-prefix-proc ((symbol-prefix-proc 'xcb-enable-) header-symbol)) '!))
@@ -580,14 +579,14 @@
     ((request (@ (name ,name)
 		 (opcode ,opcode)
 		 (combine-adjacent (,combine-adjacent #f)))
-	      ,[(combine-matchers 
+	      ,((combine-matchers 
 		 exprfield-match
 		 valueparam-match
 		 fields-match
 		 switch-match
 		 (lambda* (el #:optional ignore-error?) 
 		   (reply-match el name ignore-error?))
-		 doc-match) -> request-fields] ...)
+		 doc-match) -> request-fields) ...)
      (guard
       (string? name)
       (xml-integer? opcode)
@@ -618,9 +617,9 @@
     ((event (@ (name ,name)
 	       (number ,number)
 	       (no-sequence-number (,no-sequence-number? #f)))
-	    ,[(combine-matchers
+	    ,((combine-matchers
 	       doc-match
-	       fields-match) -> fields] ...)
+	       fields-match) -> fields) ...)
      (guard
       (string? name)
       (xml-integer? number)
@@ -687,7 +686,7 @@
 	   (hashv-set! xcb-errors ,(parse-dec-or-hex-integer number) ,error-struct-name))) #f))
     ((error (@ (name ,name)
 	       (number ,number))
-	    ,[fields-match -> fields] ...)
+	    ,(fields-match -> fields) ...)
      (guard
       (string? name)
       (xml-integer? number))
@@ -730,9 +729,9 @@
 	  (list ,@(map (lambda (type) (string->symbol type)) types))
 	  (pack-int-proc 4) (unpack-int-proc 4) #t)) #f))
     ((enum (@ (name ,name))
-	   ,[(combine-matchers
+	   ,((combine-matchers
 	      item-match
-	      doc-match) -> elements] ...)
+	      doc-match) -> elements) ...)
      (guard
       (string? name))
      (receive (items doc)
@@ -775,9 +774,9 @@
 	  ,(string->symbol oldname)))
       #f))
     ((struct (@ (name ,name))
-	     ,[(combine-matchers 
+	     ,((combine-matchers 
 		fields-match 
-		switch-match) -> fields] ...)
+		switch-match) -> fields) ...)
      (guard
       (string? name))
      (receive (fields switches)
@@ -854,9 +853,9 @@
                 (define xcbdoc (empty-xcb-doc))
                 (register-xcb-documentation (quote ,header-symbol) xcbdoc)))))
     ((union (@ (name ,name))
-	    ,[(combine-matchers
+	    ,((combine-matchers
 	       switch-match
-	       fields-match) -> fields] ...)
+	       fields-match) -> fields) ...)
      (guard
       (string? name))
      (receive (fields switches)

@@ -1,82 +1,96 @@
 (define-module (xcb event-loop)
-  #:use-module ((xcb xml connection) 
-                #:select (xcb-listen-default! 
-                          xcb-unlisten-default!
-                          poll-xcb-connection
-                          xcb-listen!
-                          xcb-unlisten!))
-  #:use-module (ice-9 q)
+  #:use-module (ice-9 curried-definitions)
   #:use-module (ice-9 receive)
-  #:re-export (xcb-listen-default!
-               xcb-unlisten-default!
-               xcb-listen!
-               xcb-unlisten!)
-  #:export (xcb-await
-            xcb-now
-            xcb-later
-            xcb-event-loop))
+  #:use-module (ice-9 control)
+  #:use-module (srfi srfi-9)
+  #:use-module (xcb xml connection)
+  #:export (event-loop))
 
-(define* (xcb-event-loop xcb-conn sentinel #:optional (defer? #f))
-  "Repeatedly poll the X server connected to XCB-CONN for reply,
-event, and error thunks until the value of parameter SENTINEL changes
-in any way (even to #f).
+(define-record-type event-loop-data
+  (make-event-loop-data-inner
+   event-default event-handlers reply-handlers error-handlers)
+  event-loop-data?
+  (event-default event-default set-event-default!)
+  (event-handlers event-handlers)
+  (reply-handlers reply-handlers)
+  (error-handlers error-handlers))
 
-If DEFER? is #t, reply thunks are evaluted immediately, while event
-and error thunks are queued and evaluted after the loop
-exits. Otherwise, thunks are evaluated in the order they are
-received."
-  (define not-ready '(not-ready))
-  (define event-q (make-q))
-  (parameterize ((sentinel not-ready))
-    (while (eq? (sentinel) not-ready)
-      (receive (type val) (poll-xcb-connection xcb-conn)
-        (case type
-          ((event) (if defer? (enq! event-q val) (val)))
-          ((error) (val))
-          ((reply) (val)))))
-    (let drain-q! ()
-      (when (not (q-empty? event-q))  
-        ((deq! event-q))
-        (drain-q!)))
-    (sentinel)))
+(define-public unknown-event '(unknown-event))
+(define (on-unknown-event event notify) (notify unknown-event))
 
-(define-syntax xcb-await
-  (syntax-rules ()
-    ((_ ((reply (proc xcb-conn arg ...))) expr ...)
-     (let* ((awaiting '(awaiting))
-            (result (make-parameter awaiting)))
-       (add-hook! (proc xcb-conn arg ...) 
-                  (lambda (r) (result ((lambda (reply) expr ...) r))))
-       (delay 
-         (if (eq? (result) awaiting)
-             (xcb-event-loop xcb-conn result #t)
-             (result)))))
-    ((_ ((reply (proc xcb-conn arg ...))
+(define (make-event-loop-data)
+  (make-event-loop-data-inner 
+   on-unknown-event (make-hash-table)
+   (make-hash-table) (make-hash-table)))
 
-         (reply* (proc* xcb-conn* arg* ...)) ...)
-        expr ...)
-     (let* ((awaiting '(awaiting))
-            (inner-result (make-parameter awaiting))
-            (inner-result-wait
-             (delay
-               (force
-                (if (eq? inner-result awaiting)
-                    (xcb-event-loop xcb-conn inner-result #t)
-                    (inner-result))))))
-      (add-hook! 
-       (proc xcb-conn arg ...)
-       (lambda (reply) 
-         (inner-result
-          (xcb-await ((reply* (proc* xcb-conn* arg* ...)) ...)
-            expr ...))))
-      (delay (force inner-result-wait))))))
+(define-public (event-loop-prepare! xcb-conn)
+  (set-xcb-connection-data! xcb-conn (make-event-loop-data)))
 
-(define-syntax xcb-now
-  (syntax-rules ()
-    ((_ proc xcb-conn arg ...)
-     (force (xcb-later proc xcb-conn arg ...)))))
+(define-public (listen-default! xcb-conn proc)
+  (set-event-default! (xcb-connection-data xcb-conn) proc))
 
-(define-syntax xcb-later
-  (syntax-rules ()
-    ((_ proc xcb-conn arg ...)
-     (xcb-await ((reply (proc xcb-conn arg ...))) reply))))
+(define-public (unlisten-default! xcb-conn)
+  (set-event-default! (xcb-connection-data xcb-conn) #f))
+
+(define-public (listen! xcb-conn struct proc)
+  (hashq-set! (event-handlers (xcb-connection-data xcb-conn)) struct proc))
+
+(define-public (unlisten! xcb-conn struct)
+  (hashq-set! (event-handlers (xcb-connection-data xcb-conn)) struct #f))
+
+(define-public (reply-listen! xcb-conn sequence-number reply-proc error-proc)
+  (hashv-set!
+   (reply-handlers (xcb-connection-data xcb-conn)) sequence-number reply-proc)
+  (hashv-set!
+   (error-handlers (xcb-connection-data xcb-conn)) sequence-number error-proc))
+
+(define (default-loop-proc) (abort '(forever)))
+
+(define-public solicit abort)
+
+(define* (event-loop xcb-conn #:optional (proc default-loop-proc))
+  (define conts (make-hash-table))
+  (define early (make-hash-table))
+  (define done? (make-parameter #f))
+  (define (poll) 
+    (xcb-connection-flush! xcb-conn)
+    (poll-xcb-connection xcb-conn))
+  (define (notify tag val)
+    (define cont (hashq-ref conts tag))
+    (hashq-remove! conts tag)
+    (if cont (cont val) (hashq-set! early tag val)))
+  (define (dispatch data-type data)
+    (define loop-data (xcb-connection-data xcb-conn))
+    (define events (event-handlers loop-data))
+    (define default (event-default loop-data))
+    (define replies (reply-handlers loop-data))
+    (define errors (error-handlers loop-data))
+    (define dispatch-proc
+      (case data-type 
+        ((event) (or (hashq-ref events (xcb-struct data)) default))
+        ((reply) (hashv-ref replies (xcb-sequence-number data)))
+        ((error) (hashv-ref errors  (xcb-sequence-number data)))))
+    (if (and dispatch-proc data) (dispatch-proc (xcb-data data) notify)))
+  (define (new-prompt type data) (% (dispatch type data) loop))
+  (define (loop cont key)
+    (define (on-miss)
+      (hashq-set! conts key cont)
+      (while (and (not (done?)) (xcb-connected? xcb-conn))
+        (call-with-values poll new-prompt)))
+    (define early-val (hashq-ref early key))
+    (define (use-early-val) (cont early-val) (hashq-remove! early key))
+    (if early-val (use-early-val) (on-miss)))
+  (% (begin (proc) (done? #t)) loop))
+
+(define-public (xcb-later xcb-conn proc . args)
+  (define notify-tag `(xcb-cookie ,proc))
+  (define value (make-parameter #f))
+  (reply-listen!
+   xcb-conn
+   (apply proc xcb-conn args)
+   (lambda (reply notify) (notify notify-tag reply))
+   (lambda (error notify) (notify notify-tag error)))
+  notify-tag)
+
+(define-public (xcb-now xcb-conn proc . args)
+  (solicit (apply xcb-later xcb-conn proc args)))

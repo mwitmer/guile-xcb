@@ -27,28 +27,23 @@
 	    xcb-connection-input-port
             xcb-connection-last-xid
             xcb-connection-buffer-port
-            xcb-connection-wait
             xcb-connection-has-extension?
             xcb-connection-use-extension!
             xcb-connection-display
+            next-request-number
             set-xcb-connection-last-xid!
 	    make-xcb-connection
-            xcb-unlisten-default!
-            xcb-listen-default!
-            xcb-listen!
-            xcb-unlisten!
             poll-xcb-connection
-	    get-event-hook
             set-xcb-connection-setup!
             xcb-connection-setup
             get-maximum-request-length             
             set-maximum-request-length!
             set-original-maximum-request-length!
-            xc-misc-enabled? 
-            all-events all-errors
-            set-xc-misc-enabled!))
+            xcb-connection-data set-xcb-connection-data!
+            all-events all-errors))
 
 (define generic-event-number 35)
+(define max-uint16 (- (expt 2 16) 1))
 
 (define-record-type xcb-connection
   (inner-make-xcb-connection 
@@ -57,14 +52,12 @@
    buffer-port
    get-bv
    socket
-   request-callbacks
+   request-structs
    next-request-number
    last-xid
-   event-hooks
    events
    errors
-   default-event-hook
-   dpy
+   display
    extensions)
   xcb-connection?
   (input-port xcb-connection-input-port)
@@ -72,9 +65,8 @@
   (buffer-port xcb-connection-buffer-port set-xcb-connection-buffer-port!)
   (get-bv xcb-connection-get-bv set-xcb-connection-get-bv!)
   (socket xcb-connection-socket)
+  (request-structs request-structs)
   (next-request-number next-request-number set-next-request-number!)
-  (event-hooks get-event-hooks)
-  (request-callbacks request-callbacks)
   (setup xcb-connection-setup set-xcb-connection-setup!)
   (last-xid xcb-connection-last-xid set-xcb-connection-last-xid!)
   (original-maximum-request-length 
@@ -82,33 +74,30 @@
   (maximum-request-length maximum-request-length set-maximum-request-length!)
   (events all-events)
   (errors all-errors)
-  (default-event-hook default-event-hook)
   (extensions xcb-connection-extensions)
-  (dpy xcb-connection-display))
+  (display xcb-connection-display)
+  (data xcb-connection-data set-xcb-connection-data!))
+
+(set-record-type-printer! 
+ xcb-connection
+ (lambda (xcb-conn port)
+   (if (xcb-connected? xcb-conn)
+    (display "#<xcb-connection (connected)>")
+    (display "#<xcb-connection (not connected)>"))))
 
 (define-public 
-  (make-xcb-connection 
-   input-port
-   output-port
-   buffer-port
-   get-bv
-   socket
-   request-callbacks
-   dpy)
+  (make-xcb-connection input-port output-port buffer-port 
+                       get-bv socket request-structs display)
   (inner-make-xcb-connection
    input-port output-port
    buffer-port get-bv
    socket
-   request-callbacks
+   request-structs
    1 0
    (make-hash-table)
    (make-hash-table)
-   (make-hash-table)
-   (make-hook 1)
-   dpy
+   display
    (make-hash-table)))
-
-
 
 (define (xcb-connection-has-extension? xcb-conn extension)
   (hashq-ref (xcb-connection-extensions xcb-conn) extension))
@@ -131,15 +120,6 @@
     (lambda (h) (hashv-set! xcb-conn-errors (+ (car h) major-opcode) (cdr h))))
   (hash-for-each-handle add-error! error-hash))
 
-(set-record-type-printer! 
- xcb-connection
- (lambda (xcb-conn port)
-   (if (xcb-connected? xcb-conn)
-    (display "#<xcb-connection (connected)>")
-    (display "#<xcb-connection (not connected)>"))))
-
-(define max-uint16 (- (expt 2 16) 1))
-
 (define-public (xcb-connection-send xcb-conn major-opcode minor-opcode request)
   (define buffer (xcb-connection-buffer-port xcb-conn))
   (define max-length (maximum-request-length xcb-conn))
@@ -149,6 +129,7 @@
          (> length (original-maximum-request-length xcb-conn))))
   (define has-content? (> (bytevector-length request) 0))
   (define reported-length (if use-bigreq? (+ length 1) length))
+  (define request-number (next-request-number xcb-conn))
   (define message-length-bv
     (uint-list->bytevector
      (list reported-length)
@@ -165,9 +146,9 @@
     (if (not minor-opcode)
      (let ((left-over (remainder (+ 3 (bytevector-length request)) 4)))
        (if (> left-over 0) (put-bytevector buffer (make-bytevector left-over 0))))))
-  (xcb-connection-flush! xcb-conn)
   (set-next-request-number! 
-   xcb-conn (logand max-uint16 (+ (next-request-number xcb-conn) 1))))
+   xcb-conn (logand max-uint16 (+ request-number 1)))
+  request-number)
 
 (define-public (mock-connection server-bytes events errors)
   (receive (buffer-port get-buffer-bytevector)
@@ -185,116 +166,68 @@
        (xcb-connection-register-errors conn errors 0)
        (values conn get-bytevector)))))
 
-(define (xcb-hook-map-for-struct xcb-conn struct)
-  (define (struct-in-hash? struct hash)
-    (memq struct (hash-map->list (lambda (k v) v) hash)))
-  (cond ((struct-in-hash? struct (all-events xcb-conn)) 
-         (get-event-hooks xcb-conn))
-        (else (error "xcb-xml: xcb connection cannot \
-listen for given struct" struct))))
-
-(define* (xcb-listen-default! xcb-conn proc #:optional replace?)
-  (define event-hook (default-event-hook xcb-conn))
-  (if replace? (reset-hook! event-hook))
-  (add-hook! event-hook proc))
-
-(define* (xcb-unlisten-default! xcb-conn #:optional proc)
-  (define event-hook (default-event-hook xcb-conn))
-  (if proc (remove-hook! event-hook proc)
-      (reset-hook! event-hook)))
-
-(define* (xcb-listen! xcb-conn struct proc #:optional replace?)
-  (define hook-map (xcb-hook-map-for-struct xcb-conn struct))
-  (define hook
-    (or (hashq-ref hook-map struct) 
-        (let ((hook (make-hook 1))) (hashq-set! hook-map struct hook) hook)))
-  (if replace? (reset-hook! hook))
-  (add-hook! hook proc))
-
-(define* (xcb-unlisten! xcb-conn struct #:optional proc)
-  (define hook-map (xcb-hook-map-for-struct xcb-conn struct))
-  (define hook (hashq-ref hook-map struct))
-  (if hook 
-      (if proc
-          (remove-hook! hook proc)
-          (reset-hook! hook))))
-
-(define-public (xcb-connection-register-reply-hook! xcb-conn reply-struct)
-  (define hook (make-hook 1))
-  (hashv-set!
-   (request-callbacks xcb-conn)
-   (next-request-number xcb-conn) 
-   (lambda (reply-data)
-     (define reply 
-       (if (and reply-struct (bytevector? reply-data))
-           (xcb-struct-unpack-from-bytevector reply-struct reply-data)
-           reply-data))
-     (run-hook hook reply)
-     reply))
-  hook)
-
-(define (unpack-event xcb-conn event-number bv)
-  (define event-struct (hashv-ref (all-events xcb-conn) event-number))
-  (define event-hook (hashq-ref (get-event-hooks xcb-conn) event-struct))
-  (define event-data
-    (if (not event-struct) (cons event-number bv)
-        (xcb-struct-unpack-from-bytevector event-struct bv)))
-  (lambda ()
-    (if event-hook (run-hook event-hook event-data)
-        (run-hook (default-event-hook xcb-conn) event-data))
-    event-data))
-
-(define (read-generic-event xcb-conn port)
-  (define extension-opcode (get-u8 port))
-  (define sequence-number (bytevector-u16-native-ref 
-                           (get-bytevector-n port 2) 0))
-  (define length (bytevector-u32-native-ref 
-                  (get-bytevector-n port 4) 0))
-  (define event-number (bytevector-u16-native-ref 
-                           (get-bytevector-n port 2) 0))
-  (define rest (get-bytevector-n port (+ 22 (* 4 length))))
-  (unpack-event xcb-conn event-number rest))
-
-(define (read-event xcb-conn port event-number)
-  (define event-struct (hashv-ref (all-events xcb-conn) event-number))
-  (define bv (get-bytevector-n port 31))
-  (unpack-event xcb-conn event-number bv))
-
-(define-public (read-reply xcb-conn port)
-  (define first-data-byte (get-u8 port))
-  (define sequence-number 
-    (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
-  (define extra-length (bytevector-u32-native-ref (get-bytevector-n port 4) 0))
-  (define reply-rest (get-bytevector-n port (+ (* extra-length 4) 24)))
-  (define reply-for-struct
-   (receive (port get-bytevector)
-       (open-bytevector-output-port)
-     (let ((length-bv (make-bytevector 4)))
-       (bytevector-u32-native-set! length-bv 0 extra-length)
-       (put-bytevector port length-bv))
-     (put-u8 port first-data-byte)
-     (put-bytevector port reply-rest)
-     (get-bytevector)))
-  (define callback
-    (and=> (hashv-remove! (request-callbacks xcb-conn) sequence-number) cdr))
-  (lambda () (if callback (callback reply-for-struct) reply-for-struct)))
-
-(define (read-error xcb-conn port)
-  (define error-number (get-u8 port))
-  (define sequence-number 
-    (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
-  (define bv (get-bytevector-n port 28))
-  (define error-struct (hashv-ref (all-errors xcb-conn) error-number))
-  (define error-data
-   (if (not error-struct) 
-       (cons error-number bv) 
-       (xcb-struct-unpack-from-bytevector error-struct bv)))
-  (define callback
-    (and=> (hashv-remove! (request-callbacks xcb-conn) sequence-number) cdr))
-  (lambda () (if callback (callback error-data) error-data)))
+(define-public (xcb-connection-register-reply-struct
+                xcb-conn sequence-number reply-struct)
+  (hashv-set! (request-structs xcb-conn) sequence-number reply-struct))
 
 (define* (poll-xcb-connection xcb-conn #:optional async?)
-  (define (xcb-connection-available? xcb-conn)
+  (define (unpack-event event-number bv)
+    (define event-struct (hashv-ref (all-events xcb-conn) event-number))
+    (define event-data
+      (if (not event-struct) (cons event-number bv)
+          (xcb-struct-unpack-from-bytevector event-struct bv)))
+    (vector event-struct event-data))
+
+  (define (read-generic-event port)
+    (define extension-opcode (get-u8 port))
+    (define sequence-number 
+      (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
+    (define length 
+      (bytevector-u32-native-ref (get-bytevector-n port 4) 0))
+    (define event-number 
+      (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
+    (define rest (get-bytevector-n port (+ 22 (* 4 length))))
+    (unpack-event event-number rest))
+
+  (define (read-event port event-number)
+    (define event-struct (hashv-ref (all-events xcb-conn) event-number))
+    (define bv (get-bytevector-n port 31))
+    (unpack-event event-number bv))
+
+  (define (read-reply port)
+    (define first-data-byte (get-u8 port))
+    (define sequence-number 
+      (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
+    (define extra-length (bytevector-u32-native-ref (get-bytevector-n port 4) 0))
+    (define reply-rest (get-bytevector-n port (+ (* extra-length 4) 24)))
+    (define reply-struct
+      (hashv-ref (request-structs xcb-conn) sequence-number reply-struct))
+    (define reply-for-struct
+      (receive (port get-bytevector)
+          (open-bytevector-output-port)
+        (let ((length-bv (make-bytevector 4)))
+          (bytevector-u32-native-set! length-bv 0 extra-length)
+          (put-bytevector port length-bv))
+        (put-u8 port first-data-byte)
+        (put-bytevector port reply-rest)
+        (get-bytevector)))
+    (define reply-data 
+      (xcb-struct-unpack-from-bytevector reply-struct reply-for-struct))
+    (vector reply-struct reply-data sequence-number))
+
+  (define (read-error port)
+    (define error-number (get-u8 port))
+    (define sequence-number 
+      (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
+    (define bv (get-bytevector-n port 28))
+    (define error-struct (hashv-ref (all-errors xcb-conn) error-number))
+    (define error-data
+      (if (not error-struct) 
+          (cons error-number bv) 
+          (xcb-struct-unpack-from-bytevector error-struct bv)))
+    (vector error-struct error-data sequence-number))
+
+  (define (xcb-connection-available?)
     (if (xcb-connection-socket xcb-conn)
         (let ((fd (port->fdes (xcb-connection-socket xcb-conn))))
           (memq fd (car (select (list fd) '() '() 0))))
@@ -302,16 +235,22 @@ listen for given struct" struct))))
 
   (define port (xcb-connection-input-port xcb-conn))
 
-  (if (or (not async?) (xcb-connection-available? xcb-conn))
+  (if (or (not async?) (xcb-connection-available?))
       (let ((next-byte (get-u8 port)))
-        (case next-byte
-          ((0) (values 'error (read-error xcb-conn port)))
-          ((1) (values 'reply (read-reply xcb-conn port)))
-          (else (values 'event 
-                        (if (= next-byte generic-event-number) 
-                            (read-generic-event xcb-conn port)
-                            (read-event xcb-conn port next-byte))))))
-      #f))
+        (if (eof-object? next-byte)
+            (values 'none #f)
+            (case next-byte
+              ((0) (values 'error (read-error port)))
+              ((1) (values 'reply (read-reply port)))
+              (else (values 'event 
+                            (if (= next-byte generic-event-number) 
+                                (read-generic-event port)
+                                (read-event port next-byte)))))))
+      (values 'none #f)))
+
+(define-public (xcb-struct data) (vector-ref data 0))
+(define-public (xcb-data data) (vector-ref data 1))
+(define-public (xcb-sequence-number data) (vector-ref data 2))
 
 (define-public (xcb-connection-flush! xcb-conn)
   (define bv ((xcb-connection-get-bv xcb-conn)))
@@ -320,4 +259,3 @@ listen for given struct" struct))))
       (open-bytevector-output-port)
     (set-xcb-connection-buffer-port! xcb-conn port)
     (set-xcb-connection-get-bv! xcb-conn get-bv)))
-

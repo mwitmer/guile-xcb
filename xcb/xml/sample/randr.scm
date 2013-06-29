@@ -101,7 +101,9 @@
     (define xconn (make-parameter #f))
     (dynamic-wind
       (lambda () (xconn (xcb-connect!)))
-      (lambda () (xrandr-inner (xconn) args))
+      (lambda () 
+        (event-loop-prepare! (xconn))
+        (event-loop (xconn) (lambda () (xrandr-inner (xconn) args))))
       (lambda () (xcb-disconnect! (xconn))))))
 
 (define* (xrandr-inner xconn args)
@@ -109,13 +111,13 @@
 
   (define setup (xcb-connection-setup xconn))
   (define enable-randr (force (xcb-enable-randr! xconn)))
-  (define randr-version (xcb-now QueryVersion xconn 1 4))
+  (define randr-version (xcb-now solicit xconn QueryVersion 1 4))
   (define screen (xref setup 'roots 0))
   (define root (xref screen 'root))
 
   ;; Screen resources
 
-  (define screen-resources (xcb-now GetScreenResourcesCurrent xconn root))
+  (define screen-resources (xcb-now solicit xconn GetScreenResourcesCurrent root))
 
   (define outputs (xref screen-resources 'outputs))
   (define crtcs (xref screen-resources 'crtcs))  
@@ -128,10 +130,10 @@
     (define (make-request xid)
       ;; Avoid performance penalty of out-of-order replies.
       (cons (xid->integer xid) 
-            (xcb-later request xconn xid xcb-current-time)))
+            (xcb-later solicit xconn request xid xcb-current-time)))
     (map force-cdr (map make-request (vector->list xids))))
 
-  (define screen-info (xcb-now GetScreenInfo xconn root))
+  (define screen-info (xcb-now solicit xconn GetScreenInfo root))
   (define output-infos (get-infos GetOutputInfo outputs))
   (define crtc-infos (get-infos GetCrtcInfo crtcs))
   (define mode-infos 
@@ -220,7 +222,7 @@ to SetCrtcConfig"))
 
   (define (disable-crtc! ci-entry)
     (define (disable ci xid)
-      (xcb-now SetCrtcConfig xconn
+      (xcb-now solicit xconn SetCrtcConfig
         xid xcb-current-time (xref screen-resources 'timestamp)
         (xref ci 'x) (xref ci 'y) (xcb-none MODE) (xref ci 'rotation) #()))
     (crtc-modify! ci-entry disable))
@@ -234,7 +236,7 @@ to SetCrtcConfig"))
                      (xref screen 'height_in_millimeters)))    
     (define (update-crtc! ci-entry)
       (define (update ci xid)
-        (xcb-now SetCrtcConfig xconn
+        (xcb-now solicit xconn SetCrtcConfig
           xid
           (xref ci 'timestamp) (xref screen-resources 'timestamp)
           (xref ci 'x) (xref ci 'y) (xref ci 'mode)
@@ -251,7 +253,7 @@ to SetCrtcConfig"))
 
   (define (format-screen-info)
     (define screen-sizes (xref screen-info 'sizes))
-    (define size-range (xcb-now GetScreenSizeRange xconn root))
+    (define size-range (xcb-now solicit xconn GetScreenSizeRange root))
     (define current-size (get-screen-size (get-output-dimensions)))
 
     (let ((get (lambda (n) (xref size-range n))))

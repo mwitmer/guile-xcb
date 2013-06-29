@@ -31,25 +31,33 @@
   (define my-gc (make-new-xid xcb-conn GCONTEXT))
   (define terminated? (make-parameter #f))
 
+  (event-loop-prepare! xcb-conn)
+
   (CreateWindow 
    xcb-conn 24 my-window root-window 0 0 200 200 0 'CopyFromParent 0 CW
    `((BackPixel . ,(xref root 'white_pixel))
-     (EventMask . ,(xenum-or EventMask 'KeyRelease 'KeyPress))))
+     (EventMask 
+      . ,(xenum-or EventMask 'KeyRelease 'KeyPress 'VisibilityChange))))
 
   (CreateGC xcb-conn my-gc my-window GC 
             `((Foreground . ,(xref root 'black_pixel))))
 
   (MapWindow xcb-conn my-window)
 
-  (xcb-listen! xcb-conn KeyPress-event
-    (lambda (key-press) (format #t "KeyPress: ~a\n" (xref key-press 'detail))))
+  (listen! xcb-conn KeyPress-event
+           (lambda (key-press notify) 
+             (define keycode (xref key-press 'detail))
+             (format #t "KeyPress: ~a\n" keycode)
+             (format #t "KeyRelease: ~a\n" (solicit 'release))
+             (if (= keycode 9) (xcb-disconnect! xcb-conn))))
 
-  (xcb-listen! xcb-conn KeyRelease-event
-    (lambda (key-release)
-      (define keycode (xref key-release 'detail))
-      (format #t "KeyRelease: ~a\n" keycode)
-      (if (= keycode 9) (terminated? #t))))
+  (listen! xcb-conn KeyRelease-event
+           (lambda (key-release notify) 
+             (notify 'release (xref key-release 'detail))))
 
-  (xcb-event-loop xcb-conn terminated? #f)
+  (listen-default! 
+   xcb-conn
+   (lambda (unknown-event notify)
+     (format #t "Unknown-event: ~a\n" unknown-event)))
 
-  (xcb-disconnect! xcb-conn))
+  (event-loop xcb-conn))
