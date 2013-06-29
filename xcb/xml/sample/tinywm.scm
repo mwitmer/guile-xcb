@@ -55,8 +55,7 @@
   (define win (make-parameter #f))
 
   (define (on-motion-notify motion-notify notify)
-    (with-replies ((pointer QueryPointer root)
-                   (geom GetGeometry (win)))
+    (with-replies ((pointer QueryPointer root) (geom GetGeometry (win)))
       (define (new-coord p g s) (if (> (+ p g) s) (- s g) p))
       (if (eq? (action) 'move)
           (ConfigureWindow 
@@ -69,10 +68,8 @@
                               (xref screen 'height_in_pixels)))))
           (ConfigureWindow 
            xcb-conn (win) ConfigWindow 
-           `((Width . ,(- (xref pointer 'root_x) 
-                          (xref geom 'x)))
-             (Height . ,(- (xref pointer 'root_y) 
-                           (xref geom 'y))))))))
+           `((Width . ,(- (xref pointer 'root_x) (xref geom 'x)))
+             (Height . ,(- (xref pointer 'root_y) (xref geom 'y))))))))
 
   (define (on-button-release button-release notify) 
     (UngrabPointer xcb-conn xcb-current-time))
@@ -88,18 +85,15 @@
         (WarpPointer xcb-conn (xcb-none WINDOW) window 0 0 0 0 1 1))
        (else
         (action 'resize)
-        (WarpPointer 
-         xcb-conn (xcb-none WINDOW) window 0 0 0 0 
-         (xref geom 'width)
-         (xref geom 'height))))
+        (WarpPointer xcb-conn (xcb-none WINDOW) window 0 0 0 0 
+                     (xref geom 'width) (xref geom 'height))))
       (GrabPointer
        xcb-conn #f root '(ButtonRelease ButtonMotion PointerMotionHint)
        'Async 'Async root (xcb-none CURSOR) xcb-current-time)))
 
   (define (on-button-press button-press notify)
     (win (xref button-press 'child))
-    (if (not (= (xid->integer (win)) 0)) 
-        (on-window-click (win) button-press)))
+    (if (not (= (xid->integer (win)) 0)) (on-window-click (win) button-press)))
 
   (define (on-key-press key-press notify)
     (cond
