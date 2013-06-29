@@ -4,7 +4,7 @@
   #:use-module (ice-9 control)
   #:use-module (srfi srfi-9)
   #:use-module (xcb xml connection)
-  #:export (event-loop with-replies with-event-loop))
+  #:export (event-loop with-replies with-connection))
 
 (define-record-type event-loop-data
   (make-event-loop-data-inner
@@ -161,7 +161,7 @@
        ...
        notify-tag))))
 
-(define-syntax with-event-loop
+(define-syntax with-connection
   (syntax-rules ()
     ((_ xcb-conn stmt ...)
      (event-loop xcb-conn (lambda () stmt ...)))))
