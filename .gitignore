@@ -2,3 +2,7 @@
 autom4te.cache/*
 *.log
 /guile-xcb.info
+/README-in.txt
+/guile-xcb-*.tar.gz
+/build/config.status
+/build/Makefile
