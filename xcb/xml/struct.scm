@@ -25,6 +25,7 @@
   #:use-module (xcb xml union)
   #:use-module (xcb xml records)
   #:use-module (xcb xml enum)
+  #:use-module ((rnrs bytevectors) #:select (bytevector-length))
   #:use-module ((rnrs base) #:select (vector-for-each vector-map))
   #:export (define-xcb-struct clone-xcb-struct 
              xcb-struct-field-specifier))
@@ -71,6 +72,7 @@
           (field-value-expressions xcb-struct)
           (list-length-expressions xcb-struct)
           (get-constructor-args xcb-struct)
+          (minimum-length xcb-struct)
           (field-order xcb-struct)))
        (define-public constructor-name
          (xcb-struct-constructor 
@@ -85,6 +87,7 @@
        predicate
        type-name
        switch-expression
+       minimum-length
        (field-tag xcb-type . more) ...)
      (begin
        (define-public type
@@ -94,7 +97,8 @@
        	  (list
        	   (xcb-struct-field-specifier 
        	    field-tag xcb-type . more) ...)
-	  '(constructor-tag ...)))
+	  '(constructor-tag ...)
+          minimum-length))
        (define-public constructor 
          (xcb-struct-constructor type '(constructor-tag ...)))
        (define-public predicate (xcb-struct-predicate type))
@@ -112,7 +116,8 @@
      (list 'field-tag xcb-type #f))))
 
 (define (make-xcb-struct-for-record-type 
-	 xcb-struct-name switch all-field-specifiers my-constructor-args)
+	 xcb-struct-name switch all-field-specifiers 
+         my-constructor-args minimum-length)
   (define types (make-hash-table))
   (define field-specifiers
     (filter (lambda (fs) (not (eq? (car fs) '*pad* ))) all-field-specifiers))
@@ -152,6 +157,7 @@
    field-value-expressions
    list-length-expressions
    my-constructor-args
+   minimum-length
    all-field-specifiers))
 
 (define-public (xcb-switch-values xcb-struct rec)
@@ -342,8 +348,16 @@ as an xcb list type" value))
     (define accessor 
       (record-accessor (inner-type xcb-struct) (xcb-switch-name struct-switch)))
     (switch-pack struct-switch xcb-struct rec (accessor rec) port))
-  (for-each (pack-field xcb-struct rec port '()) (field-order xcb-struct))
-  (and=> (switch xcb-struct) pack-switch))
+  (define packed
+   (call-with-values (lambda () (open-bytevector-output-port))
+     (lambda (port get-bytevector)
+       (for-each (pack-field xcb-struct rec port '()) (field-order xcb-struct))
+       (and=> (switch xcb-struct) pack-switch)
+       (get-bytevector))))
+  (define min (minimum-length xcb-struct))
+  (define len (bytevector-length packed))
+  (put-bytevector port packed)
+  (if (< len min) (do-ec (: i 0 (- min len)) (put-u8 port 0))))
 
 (define ((unpack-field xcb-struct rec port alist modify?) field)
   (define skip-pad-bytes (lambda (n) (do-ec (: i 0 n) (get-u8 port))))

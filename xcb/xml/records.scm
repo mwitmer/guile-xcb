@@ -65,6 +65,7 @@
             xcb-type-require-enum?
             typed-value?
             xcb-type?
+            minimum-length
             xcb-type-size
             xcb-enum-name))
 
@@ -76,6 +77,7 @@
    field-value-expressions
    list-length-expressions
    constructor-args
+   minimum-length
    field-order)
   xcb-struct?
   (inner-type inner-type)
@@ -84,6 +86,7 @@
   (field-value-expressions field-value-expressions)
   (list-length-expressions list-length-expressions)
   (constructor-args get-constructor-args)
+  (minimum-length minimum-length)
   (field-order field-order))
 
 (set-record-type-printer! 

@@ -35,6 +35,7 @@ info_TEXINFOS = guile-xcb.texi
 
 godir = $(SCM_SITE_CCACHE_DIR)
 nobase_go_DATA =                     \
+  flow/event-loop.go                 \
   xcb/xml/records.go                 \
   xcb/xml/enum.go                    \
   xcb/xml/type.go                    \

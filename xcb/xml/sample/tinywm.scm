@@ -36,15 +36,15 @@
 (define xcb-conn (xcb-connect!))
 
 (define (wm-shell-command command)
-  (define display-string 
+  (define display-string
     (format #f "DISPLAY=~a" (xcb-connection-display xcb-conn)))
   (if (= (primitive-fork) 0)
       (let ((env (cons display-string (environ))))
         (execle "/bin/sh" env "/bin/sh" "-c" command))))
 
-(event-loop-prepare! 
+(event-loop-prepare!
  xcb-conn
- (lambda (cont err) 
+ (lambda (cont err)
    (format (current-error-port) "Error: ~a\n" err) (cont)))
 
 (loop-with-connection xcb-conn
@@ -58,25 +58,25 @@
     (with-replies ((pointer QueryPointer root) (geom GetGeometry (win)))
       (define (new-coord p g s) (if (> (+ p g) s) (- s g) p))
       (if (eq? (action) 'move)
-          (ConfigureWindow 
+          (ConfigureWindow
            xcb-conn (win) ConfigWindow
-           `((X . ,(new-coord (xref pointer 'root_x) 
+           `((X . ,(new-coord (xref pointer 'root_x)
                               (xref geom 'width)
                               (xref screen 'width_in_pixels)))
-             (Y . ,(new-coord (xref pointer 'root_y) 
+             (Y . ,(new-coord (xref pointer 'root_y)
                               (xref geom 'height)
                               (xref screen 'height_in_pixels)))))
-          (ConfigureWindow 
-           xcb-conn (win) ConfigWindow 
+          (ConfigureWindow
+           xcb-conn (win) ConfigWindow
            `((Width . ,(- (xref pointer 'root_x) (xref geom 'x)))
              (Height . ,(- (xref pointer 'root_y) (xref geom 'y))))))))
 
-  (define (on-button-release button-release notify) 
+  (define (on-button-release button-release notify)
     (UngrabPointer xcb-conn xcb-current-time))
 
   (define (on-window-click window button-press)
-    (ConfigureWindow 
-     xcb-conn window ConfigWindow 
+    (ConfigureWindow
+     xcb-conn window ConfigWindow
      `((StackMode . ,(xenum-ref StackMode 'Above))))
     (with-replies ((geom GetGeometry window))
       (cond
@@ -85,7 +85,7 @@
         (WarpPointer xcb-conn (xcb-none WINDOW) window 0 0 0 0 1 1))
        (else
         (action 'resize)
-        (WarpPointer xcb-conn (xcb-none WINDOW) window 0 0 0 0 
+        (WarpPointer xcb-conn (xcb-none WINDOW) window 0 0 0 0
                      (xref geom 'width) (xref geom 'height))))
       (GrabPointer
        xcb-conn #f root '(ButtonRelease ButtonMotion PointerMotionHint)
@@ -97,9 +97,9 @@
 
   (define (on-key-press key-press notify)
     (cond
-     ((and (win) (= (xref key-press 'detail) 67)) 
-      (ConfigureWindow 
-       xcb-conn (win) ConfigWindow 
+     ((and (win) (= (xref key-press 'detail) 67))
+      (ConfigureWindow
+       xcb-conn (win) ConfigWindow
        `((StackMode . ,(xenum-ref StackMode 'Below)))))
      ((= (xref key-press 'detail) 24) (xcb-disconnect! xcb-conn))))
 
@@ -117,6 +117,6 @@
    xcb-conn #f root '(ButtonPress ButtonRelease) 'Async 'Async
    root (xcb-none CURSOR) '#{3}# '(#{1}#))
 
-  (wm-shell-command "xterm -e 'telnet localhost 37146'")
+  (spawn-server)
 
-  (spawn-server))
+  (wm-shell-command "xterm -e 'telnet localhost 37146'"))

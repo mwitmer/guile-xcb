@@ -29,13 +29,13 @@
     (define root-window (xref root 'root))
     (define my-window (make-new-xid xcb-conn WINDOW))
     (listen! KeyPress-event
-             (lambda (key-press notify)
+             (lambda (key-press)
                (define keycode (xref key-press 'detail))
                (format #t "KeyPress: ~a\n" keycode)
                (format #t "KeyRelease: ~a\n" (solicit 'release))
                (if (= keycode 9) (xcb-disconnect! xcb-conn))))
     (listen! KeyRelease-event
-             (lambda (key-release notify)
+             (lambda (key-release)
                (notify 'release (xref key-release 'detail))))
     (listen-default!
      (lambda (unknown-event notify)

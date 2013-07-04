@@ -37,10 +37,10 @@
       (xcb-connection-use-extension! xcb-conn header)
       result))
   (parameterize ((current-xcb-connection xcb-conn))
-   (with-replies
-    ((reply QueryExtension (string-length name) (string->xcb name)))
-    (if (xref reply 'present)
-        (enable (xref reply 'major_opcode)
-                (xref reply 'first_event)
-                (xref reply 'first_error) reply)
-        (error "Could not find extension version on server" name)))))
+    (with-replies
+        ((reply QueryExtension (string-length name) (string->xcb name)))
+      (if (xref reply 'present)
+          (enable (xref reply 'major_opcode)
+                  (xref reply 'first_event)
+                  (xref reply 'first_error) reply)
+          (error "Could not find extension version on server" name)))))

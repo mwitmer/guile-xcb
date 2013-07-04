@@ -171,7 +171,7 @@
 		   (merge-valueparam-with-fields 
 		    (element-syntax-syntax (car valueparams))
 		    fields)
-		   fields) switch-syntax)))
+		   fields) 0 switch-syntax)))
 	(if (= (length doc) 1)
 	    (element-syntax-documentation-syntax (car doc))
 	    #f))))
@@ -364,7 +364,7 @@
 		   value-list-syntax))
 	  (append fields (list value-list-syntax))))))
 
-(define (get-define-xcb-struct-syntax name-sym fields switch)
+(define (get-define-xcb-struct-syntax name-sym fields minimum-length switch)
   `(define-xcb-struct 
      ,name-sym
      (,(symbol-append 'make- name-sym) 
@@ -381,6 +381,7 @@
      ,(symbol-append name-sym '?)
      ,(symbol-append name-sym '-type)
      ,switch
+     ,minimum-length
      ,@(map element-syntax-syntax fields)))
 
 ;; TODO: Optional switch expression arguments
@@ -528,7 +529,7 @@
          (merge-valueparam-with-fields 
           (element-syntax-syntax (car valueparams))
           fields)
-         fields) switch-syntax))
+         fields) 0 switch-syntax))
   (define valueparam-result-syntax
     (if valueparam-syntax 
         `(valueparam valueparam-enum
@@ -638,7 +639,7 @@
 	       (if no-sequence-number? 
 		   fields
 		   `(,(car fields) . 
-		     (,(make-element-syntax 'field '(sequence_number CARD16) #f) . ,(cdr fields)))) #f)
+		     (,(make-element-syntax 'field '(sequence_number CARD16) #f) . ,(cdr fields)))) 31 #f)
 	     (hashv-set! xcb-events ,(parse-dec-or-hex-integer number) ,event-struct-name)))
 	(if (= (length doc) 1)
 	    `(register-documentation xcbdoc 
@@ -701,7 +702,7 @@
 	  `(begin
 	     ,(get-define-xcb-struct-syntax 
 	       error-struct-name 
-	       fields
+	       fields 31
 	       #f)
 	     (hashv-set! xcb-errors ,(parse-dec-or-hex-integer number) ,error-struct-name))) #f)))
     ((import ,import) (guard (string? import))
@@ -789,7 +790,7 @@
 	 (make-element-syntax 
 	  'struct 
 	  (get-define-xcb-struct-syntax 
-	   name-sym fields
+	   name-sym fields 0
 	   (if (not (null? switches))
 	       (element-syntax-syntax (car switches))
 	       #f)) #f))))
@@ -822,6 +823,7 @@
                  (srfi srfi-1)
                  (ice-9 optargs)
                  (rnrs bytevectors)
+                 (guile)
                  (xcb xml type) 
                  (xcb xml struct) 
                  (xcb xml union) 
