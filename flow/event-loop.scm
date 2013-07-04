@@ -57,7 +57,7 @@
         (define not-ready '(not-ready))
         (define replies (list (cons 'reply (make-parameter not-ready)) ...))
         (define notify-tag '(with-notifies (reply <- proc) ...))
-        (define (update tag val)
+        (define ((update tag) val)
           (define eval-param (lambda (param) (apply param '())))
           (define reply-param (assq-ref replies tag))
           (reply-param val)
@@ -65,5 +65,5 @@
             (if (not (memq not-ready results))
                 (notify notify-tag
                         (apply (lambda (reply ...) stmt stmt* ...) results)))))
-        (listen! update 'reply arg ...) ... 
+        (listen! (update 'reply) arg ...) ... 
         notify-tag)))))

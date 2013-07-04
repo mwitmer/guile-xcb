@@ -135,10 +135,10 @@
   (syntax-rules ()
     ((_ ((reply proc arg ...) ...) stmt stmt* ...)
      ((lambda ()
-        (define (inner-listen! update tag call-proc . args)
+        (define (inner-listen! update call-proc . args)
           (reply-listen!
            (apply call-proc (current-xcb-connection) args)
-           (lambda (reply-struct) (update tag reply-struct))
+           (lambda (reply-struct) (update reply-struct))
            (lambda (error-struct) (notify (default-error-tag) error-struct))))
         (with-notifies inner-listen!
                        ((reply proc arg ...) ...) stmt stmt* ...))))))
