@@ -5,9 +5,10 @@
   #:use-module (srfi srfi-9)
   #:use-module (xcb xml connection)
   #:use-module (flow event-loop)
-  #:export (with-replies with-connection 
-             loop-with-connection event-loop-prepare!)
-  #:re-export ((abort . solicit) notify))
+  #:export (with-replies
+               with-connection loop-with-connection
+               event-loop-prepare! xcb-event-loop)
+  #:re-export ((abort . solicit) notify make-tag enqueue-async!))
 
 (define-record-type event-loop-data
   (make-event-loop-data-inner
@@ -32,7 +33,7 @@
    (make-hash-table) (make-hash-table)
    basic-error-handler))
 
-(define (event-loop-prepared? xcb-conn) 
+(define (event-loop-prepared? xcb-conn)
   (not (not (xcb-connection-data xcb-conn))))
 
 (define* (event-loop-prepare! xcb-conn #:optional error-handler)
@@ -54,21 +55,60 @@
     (()
      (set-event-default! (xcb-connection-data (current-xcb-connection)) #f))))
 
+(define* (inner-listen! xcb-conn event-struct tag proc #:optional guard)
+  (define event-dispatchers (event-handlers (xcb-connection-data xcb-conn)))
+  (define previous-dispatcher (hashq-ref event-dispatchers event-struct))
+  (define dispatcher (or previous-dispatcher (make-hash-table)))
+  (hashq-set! dispatcher tag (if guard (cons guard proc) proc))
+  (if (not previous-dispatcher)
+   (hashq-set! event-dispatchers event-struct dispatcher)))
+
 (define-public listen!
   (case-lambda
-    ((xcb-conn struct proc) 
-     (hashq-set! (event-handlers (xcb-connection-data xcb-conn)) struct proc))
-    ((struct proc)
-     (hashq-set! (event-handlers (xcb-connection-data (current-xcb-connection)))
-                 struct proc))))
+    ((a b c d)
+     (define (listen-with-connection xcb-conn struct tag proc)
+       (inner-listen! xcb-conn struct tag proc))
+     (define (listen-without-connection struct tag proc guard)
+       (inner-listen! (current-xcb-connection) struct tag proc guard))
+     ((if (xcb-connection? a) listen-with-connection listen-without-connection)
+      a b c d))
+    ((xcb-conn struct tag proc guard) (inner-listen! xcb-conn struct tag proc guard))
+    ((struct tag proc) (inner-listen! (current-xcb-connection) struct tag proc))))
+
+(define unlisten-inner!
+  (case-lambda
+    ((xcb-conn event-struct)
+     (define event-dispatchers (event-handlers (xcb-connection-data xcb-conn)))
+     (hashq-remove! event-dispatchers event-struct))
+    ((xcb-conn event-struct tag)
+     (define event-dispatchers (event-handlers (xcb-connection-data xcb-conn)))
+     (define dispatcher (hashq-ref event-dispatchers event-struct))
+     (if dispatcher (hashq-remove! dispatcher tag)))))
 
 (define-public unlisten!
   (case-lambda
-    ((xcb-conn struct)
-     (hashq-set! (event-handlers (xcb-connection-data xcb-conn)) struct #f))
-    ((struct)
-     (hashq-set! (event-handlers (xcb-connection-data (current-xcb-connection)))
-                 struct #f))))
+    ((a b)
+     (define (unlisten-with-connection xcb-conn struct)
+       (unlisten-inner! xcb-conn struct))
+     (define (unlisten-without-connection struct tag)
+       (unlisten-inner! (current-xcb-connection) struct tag))
+     ((if (xcb-connection? a)
+          unlisten-with-connection unlisten-without-connection)
+      a b))
+    ((struct) (unlisten-inner! (current-xcb-connection) struct))
+    ((xcb-conn struct tag) (unlisten-inner! xcb-conn struct tag))))
+
+(define (dispatch-event dispatchers event-struct event)
+  (define (dispatch dispatcher)
+    (let look ((tests (hash-map->list (lambda (k v) v) dispatcher)))
+      (if (not (null? tests))
+          (begin
+            (if (pair? (car tests))
+                (if ((caar tests) event) ((cdar tests) event))
+                ((car tests) event))
+            (look (cdr tests))))))
+  (define dispatcher (hashq-ref dispatchers event-struct))
+  (and=> dispatcher dispatch))
 
 (define-public reply-listen!
   (case-lambda
@@ -98,9 +138,7 @@
     (define (dispatch)
       (define (poll)
         (if (xcb-connected? xcb-conn)
-            (begin
-              (xcb-connection-flush! xcb-conn)
-              (poll-xcb-connection xcb-conn))
+            (poll-xcb-connection xcb-conn #t)
             (values #f #f)))
       (define (dispatch data-type data)
         (define events (event-handlers loop-data))
@@ -109,13 +147,17 @@
         (define errors (error-handlers loop-data))
         (define dispatch-proc
           (case data-type
-            ((event) (or (hashq-ref events (xcb-struct data)) default))
+            ((event)
+             (if (hashq-get-handle events (xcb-struct data))
+                 (lambda (r) (dispatch-event events (xcb-struct data) r))
+                 default))
             ((reply) (hashv-ref replies (xcb-sequence-number data)))
-            ((error) (hashv-ref errors (xcb-sequence-number data)))))
+            ((error) (hashv-ref errors (xcb-sequence-number data)))
+            (else #f)))
         (if (and dispatch-proc data) (dispatch-proc (xcb-data data))))
       (call-with-values poll dispatch))
     (define (finished?) (not (xcb-connected? xcb-conn)))
-    (define (after) 
+    (define (after)
       (if (xcb-connected? xcb-conn) (xcb-connection-flush! xcb-conn)))
     (define (on-error) (default-error-handler loop-data))
     (do-event-loop dispatch finished? proc #:after after #:on-error on-error)))
