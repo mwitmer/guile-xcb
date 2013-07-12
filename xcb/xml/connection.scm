@@ -26,6 +26,7 @@
   #:export (xcb-connection-output-port
 	    xcb-connection-input-port
             xcb-connection-last-xid
+            xcb-connection?
             xcb-connection-buffer-port
             xcb-connection-has-extension?
             xcb-connection-use-extension!
@@ -36,7 +37,7 @@
             poll-xcb-connection
             set-xcb-connection-setup!
             xcb-connection-setup
-            get-maximum-request-length             
+            get-maximum-request-length
             set-maximum-request-length!
             set-original-maximum-request-length!
             xcb-connection-data set-xcb-connection-data!
@@ -46,8 +47,8 @@
 (define max-uint16 (- (expt 2 16) 1))
 
 (define-record-type xcb-connection
-  (inner-make-xcb-connection 
-   input-port 
+  (inner-make-xcb-connection
+   input-port
    output-port
    buffer-port
    get-bv
@@ -58,7 +59,8 @@
    events
    errors
    display
-   extensions)
+   extensions
+   mutex)
   xcb-connection?
   (input-port xcb-connection-input-port)
   (output-port xcb-connection-output-port)
@@ -69,24 +71,25 @@
   (next-request-number next-request-number set-next-request-number!)
   (setup xcb-connection-setup set-xcb-connection-setup!)
   (last-xid xcb-connection-last-xid set-xcb-connection-last-xid!)
-  (original-maximum-request-length 
+  (original-maximum-request-length
    original-maximum-request-length set-original-maximum-request-length!)
   (maximum-request-length maximum-request-length set-maximum-request-length!)
   (events all-events)
   (errors all-errors)
   (extensions xcb-connection-extensions)
   (display xcb-connection-display)
-  (data xcb-connection-data set-xcb-connection-data!))
+  (data xcb-connection-data set-xcb-connection-data!)
+  (mutex xcb-connection-mutex))
 
-(set-record-type-printer! 
+(set-record-type-printer!
  xcb-connection
  (lambda (xcb-conn port)
    (if (xcb-connected? xcb-conn)
     (display "#<xcb-connection (connected)>")
     (display "#<xcb-connection (not connected)>"))))
 
-(define-public 
-  (make-xcb-connection input-port output-port buffer-port 
+(define-public
+  (make-xcb-connection input-port output-port buffer-port
                        get-bv socket request-structs display)
   (inner-make-xcb-connection
    input-port output-port
@@ -97,7 +100,8 @@
    (make-hash-table)
    (make-hash-table)
    display
-   (make-hash-table)))
+   (make-hash-table)
+   (make-mutex)))
 
 (define (xcb-connection-has-extension? xcb-conn extension)
   (hashq-ref (xcb-connection-extensions xcb-conn) extension))
@@ -129,13 +133,14 @@
          (> length (original-maximum-request-length xcb-conn))))
   (define has-content? (> (bytevector-length request) 0))
   (define reported-length (if use-bigreq? (+ length 1) length))
-  (define request-number (next-request-number xcb-conn))
+  (define mutex (xcb-connection-mutex xcb-conn))
   (define message-length-bv
     (uint-list->bytevector
      (list reported-length)
      (native-endianness) (if use-bigreq? 4 2)))
   (if (and max-length (> length max-length))
       (error "xml-xcb: Request length too long for X server: " length))
+  (while (not (try-mutex mutex)))
   (put-u8 buffer major-opcode)
   (if minor-opcode (put-u8 buffer minor-opcode)
       (put-u8 buffer (if has-content? (bytevector-u8-ref request 0) 0)))
@@ -144,18 +149,21 @@
   (when has-content?
     (put-bytevector buffer request (if minor-opcode 0 1))
     (if (not minor-opcode)
-     (let ((left-over (remainder (+ 3 (bytevector-length request)) 4)))
-       (if (> left-over 0) (put-bytevector buffer (make-bytevector left-over 0))))))
-  (set-next-request-number! 
-   xcb-conn (logand max-uint16 (+ request-number 1)))
-  request-number)
+        (let ((left-over (remainder (+ 3 (bytevector-length request)) 4)))
+          (if (> left-over 0) (put-bytevector buffer (make-bytevector left-over 0))))))
+  (let ((request-number (next-request-number xcb-conn)))
+    (set-next-request-number!
+     xcb-conn (logand max-uint16 (+ request-number 1)))
+    (xcb-connection-flush! xcb-conn)
+    (unlock-mutex mutex)
+    request-number))
 
 (define-public (mock-connection server-bytes events errors)
   (receive (buffer-port get-buffer-bytevector)
       (open-bytevector-output-port)
    (receive (output-port get-bytevector)
        (open-bytevector-output-port)
-     (let ((conn (make-xcb-connection 
+     (let ((conn (make-xcb-connection
                   (open-bytevector-input-port server-bytes)
                   output-port
                   buffer-port
@@ -180,11 +188,11 @@
 
   (define (read-generic-event port)
     (define extension-opcode (get-u8 port))
-    (define sequence-number 
+    (define sequence-number
       (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
-    (define length 
+    (define length
       (bytevector-u32-native-ref (get-bytevector-n port 4) 0))
-    (define event-number 
+    (define event-number
       (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
     (define rest (get-bytevector-n port (+ 22 (* 4 length))))
     (unpack-event event-number rest))
@@ -196,12 +204,12 @@
 
   (define (read-reply port)
     (define first-data-byte (get-u8 port))
-    (define sequence-number 
+    (define sequence-number
       (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
     (define extra-length (bytevector-u32-native-ref (get-bytevector-n port 4) 0))
     (define reply-rest (get-bytevector-n port (+ (* extra-length 4) 24)))
     (define reply-struct
-      (hashv-ref (request-structs xcb-conn) sequence-number reply-struct))
+      (hashv-ref (request-structs xcb-conn) sequence-number))
     (define reply-for-struct
       (receive (port get-bytevector)
           (open-bytevector-output-port)
@@ -211,42 +219,54 @@
         (put-u8 port first-data-byte)
         (put-bytevector port reply-rest)
         (get-bytevector)))
-    (define reply-data 
+    (define reply-data
       (xcb-struct-unpack-from-bytevector reply-struct reply-for-struct))
     (vector reply-struct reply-data sequence-number))
 
   (define (read-error port)
     (define error-number (get-u8 port))
-    (define sequence-number 
+    (define sequence-number
       (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
     (define bv (get-bytevector-n port 28))
     (define error-struct (hashv-ref (all-errors xcb-conn) error-number))
     (define error-data
-      (if (not error-struct) 
-          (cons error-number bv) 
+      (if (not error-struct)
+          (cons error-number bv)
           (xcb-struct-unpack-from-bytevector error-struct bv)))
     (vector error-struct error-data sequence-number))
 
-  (define (xcb-connection-available?)
-    (if (xcb-connection-socket xcb-conn)
-        (let ((fd (port->fdes (xcb-connection-socket xcb-conn))))
-          (memq fd (car (select (list fd) '() '() 0))))
-        #t))
-
   (define port (xcb-connection-input-port xcb-conn))
+  (define mutex (xcb-connection-mutex xcb-conn))
 
-  (if (or (not async?) (xcb-connection-available?))
-      (let ((next-byte (get-u8 port)))
-        (if (eof-object? next-byte)
-            (values 'none #f)
-            (case next-byte
-              ((0) (values 'error (read-error port)))
-              ((1) (values 'reply (read-reply port)))
-              (else (values 'event 
-                            (if (= next-byte generic-event-number) 
-                                (read-generic-event port)
-                                (read-event port next-byte)))))))
-      (values 'none #f)))
+  (define (file-ready? fd)
+    (define do-select (lambda () (select (list fd) '() '() 0 16667)))
+    (define on-error
+      (lambda args
+        (if (= (system-error-errno args) EINTR)
+            '(() () ())
+            (apply throw args))))
+    (memq fd (car (catch 'system-error do-select on-error))))
+
+  (while (not (try-mutex mutex)))
+
+  (receive (data-type data)
+      (if (or (not async?)
+              (if (xcb-connection-socket xcb-conn)
+                  (file-ready? (port->fdes (xcb-connection-socket xcb-conn)))
+                  #t))
+          (let ((next-byte (get-u8 port)))
+            (if (eof-object? next-byte)
+                (values 'none #f)
+                (case next-byte
+                  ((0) (values 'error (read-error port)))
+                  ((1) (values 'reply (read-reply port)))
+                  (else (values 'event
+                                (if (= next-byte generic-event-number)
+                                    (read-generic-event port)
+                                    (read-event port next-byte)))))))
+          (values 'none #f))
+    (unlock-mutex mutex)
+    (values data-type data)))
 
 (define-public (xcb-struct data) (vector-ref data 0))
 (define-public (xcb-data data) (vector-ref data 1))
