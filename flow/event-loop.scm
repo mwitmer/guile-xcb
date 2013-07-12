@@ -3,19 +3,23 @@
   #:use-module (ice-9 receive)
   #:use-module (ice-9 control)
   #:use-module (srfi srfi-9)
+  #:use-module (ice-9 q)
   #:export (with-notifies do-event-loop))
 
 (define-public (make-tag data) (list data))
 (define-public notify-param (make-parameter #f))
-(define-public (notify tag val) 
+(define-public (notify tag val)
   (if (notify-param)
       ((notify-param) tag val)
       (error "event-loop: Call to notify outside an event-loop")))
 (define-public default-error-tag (make-parameter '(error)))
 (define (default-loop-proc) (abort (make-tag 'forever)))
+(define async-queue (make-parameter #f))
+(define-public (enqueue-async! thunk)
+  (q-push! (async-queue) thunk))
 
-(define* (do-event-loop dispatcher finished? 
-                        #:optional (proc default-loop-proc) 
+(define* (do-event-loop dispatcher finished?
+                        #:optional (proc default-loop-proc)
                         #:key after on-error)
   (define (run)
     (define conts (make-hash-table))
@@ -23,8 +27,8 @@
     (define done? (make-parameter #f))
     (define finish-tag (make-tag 'finished))
     (define (notify-proc tag val)
-      (cond 
-       ((and on-error (eq? tag (default-error-tag))) 
+      (cond
+       ((and on-error (eq? tag (default-error-tag)))
         (abort-to-prompt (default-error-tag) val))
        ((eq? tag (default-error-tag))
         (error "event-loop: Throw to nonexistant error handler")))
@@ -34,17 +38,20 @@
     (define* (loop cont key #:optional proc)
       (define early-val (hashq-ref early key))
       (define (on-miss)
-        (define (dispatch-loop) 
+        (define (dispatch-loop)
           (let inner-loop ()
             (define result (dispatcher))
+            (while (not (q-empty? (async-queue)))
+              ((q-pop! (async-queue))))
             (if (or (done?) (finished?)) result (inner-loop))))
         (hashq-set! conts key (or proc cont))
         (if proc (cont #t) (dispatch-loop)))
-      (define (use-early-val) 
-        (hashq-remove! early key) 
+      (define (use-early-val)
+        (hashq-remove! early key)
         ((or proc cont) early-val))
       (if early-val (% (use-early-val) loop) (% (on-miss) loop)))
-    (parameterize ((notify-param notify-proc))
+    (parameterize ((notify-param notify-proc)
+                   (async-queue (make-q)))
       (define final (% (let ((result (proc))) (done? #t) result) loop))
       (if (and (finished?) after) (after))
       final))
@@ -53,7 +60,7 @@
 (define-syntax with-notifies
   (syntax-rules ()
     ((_ listen! ((reply arg ...) ...) stmt stmt* ...)
-     ((lambda () 
+     ((lambda ()
         (define not-ready '(not-ready))
         (define replies (list (cons 'reply (make-parameter not-ready)) ...))
         (define notify-tag '(with-notifies (reply <- proc) ...))
@@ -65,5 +72,5 @@
             (if (not (memq not-ready results))
                 (notify notify-tag
                         (apply (lambda (reply ...) stmt stmt* ...) results)))))
-        (listen! (update 'reply) arg ...) ... 
+        (listen! (update 'reply) arg ...) ...
         notify-tag)))))
