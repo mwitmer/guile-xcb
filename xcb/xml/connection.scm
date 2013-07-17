@@ -155,7 +155,7 @@
                 (put-bytevector buffer request 1)))
         (if (not minor-opcode)
             (let ((left-over (remainder (+ 3 (bytevector-length request)) 4)))
-              (if (> left-over 0) 
+              (if (> left-over 0)
                   (put-bytevector buffer (make-bytevector left-over 0))))))
       (let ((request-number (next-request-number xcb-conn)))
         (xcb-connection-flush! xcb-conn)
@@ -184,6 +184,16 @@
                 xcb-conn sequence-number reply-struct)
   (hashv-set! (request-structs xcb-conn) sequence-number reply-struct))
 
+(define (recv1! sock)
+  (define bv (make-bytevector 1))
+  (recv! sock bv)
+  (bytevector-u8-ref bv 0))
+
+(define (recv-n! sock n)
+  (define bv (make-bytevector n))
+  (recv! sock bv)
+  bv)
+
 (define* (poll-xcb-connection xcb-conn #:optional async?)
   (define (unpack-event event-number bv)
     (define event-struct (hashv-ref (all-events xcb-conn) event-number))
@@ -192,28 +202,28 @@
           (xcb-struct-unpack-from-bytevector event-struct bv)))
     (vector event-struct event-data))
 
-  (define (read-generic-event port)
-    (define extension-opcode (get-u8 port))
+  (define (read-generic-event sock)
+    (define extension-opcode (recv1! sock))
     (define sequence-number
-      (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
+      (bytevector-u16-native-ref (recv-n! sock 2) 0))
     (define length
-      (bytevector-u32-native-ref (get-bytevector-n port 4) 0))
+      (bytevector-u32-native-ref (recv-n! sock 4) 0))
     (define event-number
-      (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
-    (define rest (get-bytevector-n port (+ 22 (* 4 length))))
+      (bytevector-u16-native-ref (recv-n! sock 2) 0))
+    (define rest (recv-n! sock (+ 22 (* 4 length))))
     (unpack-event event-number rest))
 
-  (define (read-event port event-number)
+  (define (read-event sock event-number)
     (define event-struct (hashv-ref (all-events xcb-conn) event-number))
-    (define bv (get-bytevector-n port 31))
+    (define bv (recv-n! sock 31))
     (unpack-event event-number bv))
 
-  (define (read-reply port)
-    (define first-data-byte (get-u8 port))
+  (define (read-reply sock)
+    (define first-data-byte (recv1! sock))
     (define sequence-number
-      (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
-    (define extra-length (bytevector-u32-native-ref (get-bytevector-n port 4) 0))
-    (define reply-rest (get-bytevector-n port (+ (* extra-length 4) 24)))
+      (bytevector-u16-native-ref (recv-n! sock 2) 0))
+    (define extra-length (bytevector-u32-native-ref (recv-n! sock 4) 0))
+    (define reply-rest (recv-n! sock (+ (* extra-length 4) 24)))
     (define reply-struct
       (hashv-ref (request-structs xcb-conn) sequence-number))
     (define reply-for-struct
@@ -229,11 +239,11 @@
       (xcb-struct-unpack-from-bytevector reply-struct reply-for-struct))
     (vector reply-struct reply-data sequence-number))
 
-  (define (read-error port)
-    (define error-number (get-u8 port))
+  (define (read-error sock)
+    (define error-number (recv1! sock))
     (define sequence-number
-      (bytevector-u16-native-ref (get-bytevector-n port 2) 0))
-    (define bv (get-bytevector-n port 28))
+      (bytevector-u16-native-ref (recv-n! sock 2) 0))
+    (define bv (recv-n! sock 28))
     (define error-struct (hashv-ref (all-errors xcb-conn) error-number))
     (define error-data
       (if (not error-struct)
@@ -241,11 +251,12 @@
           (xcb-struct-unpack-from-bytevector error-struct bv)))
     (vector error-struct error-data sequence-number))
 
-  (define port (xcb-connection-input-port xcb-conn))
+
   (define mutex (xcb-connection-mutex xcb-conn))
 
   (define (file-ready? fd)
-    (define do-select (lambda () (select (list fd) '() '() 0 16667)))
+    (define do-select
+      (lambda () (select (list fd) '() '() 0 50000)))
     (define on-error
       (lambda args
         (if (= (system-error-errno args) EINTR)
@@ -253,24 +264,23 @@
             (apply throw args))))
     (memq fd (car (catch 'system-error do-select on-error))))
 
+  (define sock (xcb-connection-socket xcb-conn))
+
   (dynamic-wind
     (lambda () (while (not (try-mutex mutex))))
     (lambda ()
      (receive (data-type data)
-         (if (or (not async?)
-                 (if (xcb-connection-socket xcb-conn)
-                     (file-ready? (port->fdes (xcb-connection-socket xcb-conn)))
-                     #t))
-             (let ((next-byte (get-u8 port)))
+         (if (or (not async?) (file-ready? (port->fdes sock)))
+             (let ((next-byte (recv1! sock)))
                (if (eof-object? next-byte)
                    (values 'none #f)
                    (case next-byte
-                     ((0) (values 'error (read-error port)))
-                     ((1) (values 'reply (read-reply port)))
+                     ((0) (values 'error (read-error sock)))
+                     ((1) (values 'reply (read-reply sock)))
                      (else (values 'event
                                    (if (= next-byte generic-event-number)
-                                       (read-generic-event port)
-                                       (read-event port next-byte)))))))
+                                       (read-generic-event sock)
+                                       (read-event sock next-byte)))))))
              (values 'none #f))
        (values data-type data)))
     (lambda () (unlock-mutex mutex))))
@@ -282,6 +292,7 @@
 (define-public (xcb-connection-flush! xcb-conn)
   (define bv ((xcb-connection-get-bv xcb-conn)))
   (put-bytevector (xcb-connection-output-port xcb-conn) bv)
+  (force-output (xcb-connection-output-port xcb-conn))
   (receive (port get-bv)
       (open-bytevector-output-port)
     (set-xcb-connection-buffer-port! xcb-conn port)
