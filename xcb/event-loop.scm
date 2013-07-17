@@ -23,6 +23,7 @@
 
 (define-public unknown-event (make-tag 'unknown-event))
 (define-public current-xcb-connection (make-parameter #f))
+(define-public (unsolicit tag) (abort tag #f))
 (define (on-unknown-event event) (notify unknown-event event))
 
 (define (basic-error-handler cont arg) (throw 'xcb-error arg))
@@ -154,7 +155,7 @@
             ((reply) (hashv-ref replies (xcb-sequence-number data)))
             ((error) (hashv-ref errors (xcb-sequence-number data)))
             (else #f)))
-        (if (and dispatch-proc data) (dispatch-proc (xcb-data data))))
+        (if (and dispatch-proc data) (dispatch-proc (xcb-data data)) #f))
       (call-with-values poll dispatch))
     (define (finished?) (not (xcb-connected? xcb-conn)))
     (define (after)
