@@ -28,6 +28,12 @@
 (define-public (xenum-ref enum key)
   (hashq-ref (key-value-hash enum) key))
 
+(define-public (xenum-keys enum)
+  (hash-map->list (lambda (k v) k) (key-value-hash enum)))
+
+(define-public (xenum-values enum)
+  (hash-map->list (lambda (k v) k) (value-key-hash enum)))
+
 (define-public (xenum-key-ref enum val)
   (hashq-ref (value-key-hash enum) val))
 
