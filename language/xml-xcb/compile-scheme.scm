@@ -754,7 +754,8 @@
 				      (quote ,(car item-syntax))
 				      ,(if provided-value `(,provided-value #f) next-value))
 		      (if provided-value
-			  (item-creator (cdr items) next-value)
+			  (item-creator (cdr items) 
+                                        (1+ ((eval provided-value (current-module)) #f)))
 			  (item-creator (cdr items) (1+ next-value)))))
 		   '())))
 	(if (= (length doc) 1)
