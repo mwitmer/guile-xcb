@@ -5,10 +5,10 @@
   #:use-module (srfi srfi-9)
   #:use-module (xcb xml connection)
   #:use-module (flow event-loop)
-  #:export (with-replies
+  #:export (with-replies create-listener
                with-connection loop-with-connection
                event-loop-prepare! xcb-event-loop)
-  #:re-export ((abort . solicit) notify make-tag enqueue-async!))
+  #:re-export ((abort . solicit) notify make-tag post-to-event-loop notify-map))
 
 (define-record-type event-loop-data
   (make-event-loop-data-inner
@@ -51,8 +51,7 @@
 
 (define-public unlisten-default!
   (case-lambda
-    ((xcb-conn)
-     (set-event-default! (xcb-connection-data xcb-conn) #f))
+    ((xcb-conn) (set-event-default! (xcb-connection-data xcb-conn) #f))
     (()
      (set-event-default! (xcb-connection-data (current-xcb-connection)) #f))))
 
@@ -73,8 +72,10 @@
        (inner-listen! (current-xcb-connection) struct tag proc guard))
      ((if (xcb-connection? a) listen-with-connection listen-without-connection)
       a b c d))
-    ((xcb-conn struct tag proc guard) (inner-listen! xcb-conn struct tag proc guard))
-    ((struct tag proc) (inner-listen! (current-xcb-connection) struct tag proc))))
+    ((xcb-conn struct tag proc guard)
+     (inner-listen! xcb-conn struct tag proc guard))
+    ((struct tag proc)
+     (inner-listen! (current-xcb-connection) struct tag proc))))
 
 (define unlisten-inner!
   (case-lambda
@@ -160,11 +161,13 @@
     (define (finished?) (not (xcb-connected? xcb-conn)))
     (define (after)
       (if (xcb-connected? xcb-conn) (xcb-connection-flush! xcb-conn)))
-    (define (on-error) (default-error-handler loop-data))
-    (do-event-loop dispatch finished? proc #:after after #:on-error on-error)))
+    (do-event-loop dispatch finished? proc #:after after
+                   #:on-error (lambda args
+                                (if (default-error-handler loop-data)
+                                    (apply (default-error-handler loop-data) args))))))
 
 (define-public (delay-reply proc . args)
-  (define notify-tag `(xcb-cookie ,proc))
+  (define notify-tag (make-tag `(xcb-cookie ,proc)))
   (define value (make-parameter #f))
   (reply-listen!
    (apply proc (current-xcb-connection) args)
@@ -173,18 +176,6 @@
   notify-tag)
 
 (define-public (reply-for proc . args) (abort (apply delay-reply proc args)))
-
-(define-syntax with-replies
-  (syntax-rules ()
-    ((_ ((reply proc arg ...) ...) stmt stmt* ...)
-     ((lambda ()
-        (define (inner-listen! update call-proc . args)
-          (reply-listen!
-           (apply call-proc (current-xcb-connection) args)
-           (lambda (reply-struct) (update reply-struct))
-           (lambda (error-struct) (notify (default-error-tag) error-struct))))
-        (with-notifies inner-listen!
-                       ((reply proc arg ...) ...) stmt stmt* ...))))))
 
 (define-syntax with-connection
   (syntax-rules ()
@@ -195,3 +186,39 @@
   (syntax-rules ()
     ((_ xcb-conn stmt ...)
      (xcb-event-loop xcb-conn (lambda () stmt ... (abort (make-tag 'forever)))))))
+
+(define-syntax make-listener
+  (syntax-rules (guard)
+    ((_ event-struct tag name (guard guard-expr ...) expr expr* ...)
+     (listen! event-struct tag
+              (lambda (name) expr expr* ...)
+              (lambda (name) (and guard-expr ...))))
+    ((_ event-struct tag name expr expr* ...)
+     (listen! event-struct tag (lambda (name) expr expr* ...)))))
+
+(define-syntax create-listener
+  (syntax-rules ()
+    ((_ tag stop! reset!
+        (reset-expr ...)
+        (((event-struct name) body body* ...) ...))
+     (letrec ((stop! (lambda () (unlisten! event-struct tag) ...))
+               (reset!
+                (lambda ()
+                  reset-expr ...
+                  (make-listener event-struct tag name body body* ...) ...)))
+       (reset!) (values stop! reset!)))
+    ((_ tag stop! (((event-struct name) body body* ...) ...))
+     (create-listener
+      tag stop! reset! () (((event-struct name) body body* ...) ...)))))
+
+(define-syntax with-replies
+  (syntax-rules ()
+    ((_ ((reply proc arg ...) ...) stmt stmt* ...)
+     (let* ((pre-notify-tag (notify-map (list (delay-reply proc arg ...) ...)))
+            (notify-tag (make-tag '(with-replies (reply <- proc) ...)))
+            (on-complete (lambda (reply ...) stmt stmt* ...))
+            (when-done
+             (lambda (replies)
+               (notify notify-tag (apply on-complete replies)))))
+      (abort pre-notify-tag when-done)
+      notify-tag))))

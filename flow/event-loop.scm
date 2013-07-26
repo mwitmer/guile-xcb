@@ -15,7 +15,7 @@
 (define-public default-error-tag (make-parameter '(error)))
 (define (default-loop-proc) (abort (make-tag 'forever)))
 (define async-queue (make-parameter #f))
-(define-public (enqueue-async! thunk)
+(define-public (post-to-event-loop thunk)
   (q-push! (async-queue) thunk))
 
 (define* (do-event-loop dispatcher finished?
@@ -62,22 +62,20 @@
       final))
   (if on-error (call-with-prompt (default-error-tag) run on-error) (run)))
 
-(define-syntax with-notifies
-  (syntax-rules ()
-    ((_ listen! ((reply arg ...) ...) stmt stmt* ...)
-     ((lambda ()
-        (define not-ready (make-tag 'not-ready))
-        (define reply-tags (list (cons 'reply (make-tag 'reply)) ...))
-        (define replies (list (cons (assq-ref reply-tags 'reply)
-                                    (make-parameter not-ready)) ...))
-        (define notify-tag (make-tag '(with-notifies (reply <- proc) ...)))
-        (define ((update tag) val)
-          (define (eval-param param) (apply param '()))
-          (define reply-param (assq-ref replies tag))
-          (reply-param val)
-          (let  ((results (map-in-order eval-param (map-in-order cdr replies))))
-            (if (not (memq not-ready results))
-                (notify notify-tag
-                        (apply (lambda (reply ...) stmt stmt* ...) results)))))
-        (listen! (update (assq-ref reply-tags 'reply)) arg ...) ...
-        notify-tag)))))
+(define-public (notify-map reply-tags)
+  (define not-ready (make-tag 'not-ready))
+  (define replies
+    (map (lambda (reply-tag) (cons reply-tag (make-parameter not-ready)))
+         reply-tags))
+  (define notify-tag (make-tag `(notify-map ,@reply-tags)))
+  (define (update tag val)
+    (define (eval-param param) (apply param '()))
+    (define reply-param (assq-ref replies tag))
+    (reply-param val)
+    (let ((results (map-in-order eval-param (map-in-order cdr replies))))
+      (if (not (memq not-ready results)) (notify notify-tag results))))
+  (define (abort-reply reply-tag)
+    (abort reply-tag (lambda (reply) (update reply-tag reply))))
+  (for-each abort-reply reply-tags)
+  notify-tag)
+
