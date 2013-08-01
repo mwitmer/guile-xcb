@@ -23,11 +23,10 @@
   #:use-module (rnrs bytevectors)
   #:use-module (xcb xml struct)
   #:use-module (xcb xml type)
-  #:export (xcb-connection-output-port
-	    xcb-connection-input-port
-            xcb-connection-last-xid
+  #:export (xcb-connection-last-xid
             xcb-connection?
             xcb-connection-buffer-port
+            xcb-connection-socket
             xcb-connection-has-extension?
             xcb-connection-use-extension!
             xcb-connection-display
@@ -48,8 +47,6 @@
 
 (define-record-type xcb-connection
   (inner-make-xcb-connection
-   input-port
-   output-port
    buffer-port
    get-bv
    socket
@@ -81,6 +78,10 @@
   (data xcb-connection-data set-xcb-connection-data!)
   (mutex xcb-connection-mutex))
 
+(define-public (xcb-disconnect! xcb-conn)
+  (set-xcb-connection-setup! xcb-conn #f)
+  (close-port (xcb-connection-socket xcb-conn)))
+
 (set-record-type-printer!
  xcb-connection
  (lambda (xcb-conn port)
@@ -89,10 +90,8 @@
     (display "#<xcb-connection (not connected)>"))))
 
 (define-public
-  (make-xcb-connection input-port output-port buffer-port
-                       get-bv socket request-structs display)
+  (make-xcb-connection buffer-port get-bv socket request-structs display)
   (inner-make-xcb-connection
-   input-port output-port
    buffer-port get-bv
    socket
    request-structs
@@ -170,8 +169,6 @@
    (receive (output-port get-bytevector)
        (open-bytevector-output-port)
      (let ((conn (make-xcb-connection
-                  (open-bytevector-input-port server-bytes)
-                  output-port
                   buffer-port
                   get-buffer-bytevector
                   #f
@@ -291,8 +288,7 @@
 
 (define-public (xcb-connection-flush! xcb-conn)
   (define bv ((xcb-connection-get-bv xcb-conn)))
-  (put-bytevector (xcb-connection-output-port xcb-conn) bv)
-  (force-output (xcb-connection-output-port xcb-conn))
+  (send (xcb-connection-socket xcb-conn) bv)
   (receive (port get-bv)
       (open-bytevector-output-port)
     (set-xcb-connection-buffer-port! xcb-conn port)

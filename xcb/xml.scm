@@ -4,9 +4,10 @@
                           xcb-connection-setup
                           xcb-connection-has-extension?
                           xcb-connection-display
+                          xcb-disconnect!
                           poll-xcb-connection))
   #:use-module ((xcb xml doc) #:select (document-full document-brief))
-  #:use-module ((xcb xml auth) #:select (xcb-connect! xcb-disconnect!))
+  #:use-module ((xcb xml auth) #:select (xcb-connect!))
   #:use-module ((xcb xml core)
                 #:select (make-new-xid
                           xcb->string

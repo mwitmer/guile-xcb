@@ -26,27 +26,25 @@
   #:use-module (xcb xml connection)
   #:export (xcb-connect!))
 
-(define-public (xcb-disconnect! xcb-conn)
-  (set-xcb-connection-setup! xcb-conn #f)
-  (close-port (xcb-connection-input-port xcb-conn)))
-
-(define* (xcb-connect! #:optional (display-name (getenv "DISPLAY")) (hostname (gethostname)))
+(define* (xcb-connect!
+          #:optional (display-name (getenv "DISPLAY"))
+          (hostname (gethostname)))
   (define (xcb-get-auths)
     (define auth-file (open-file (getenv "XAUTHORITY") "rb"))
 
     (define port
-      (make-custom-binary-input-port 
+      (make-custom-binary-input-port
        "xcb-auth-input"
        (lambda (bv start count)
          (do ((n 0 (1+ n))
               (ch (read-char auth-file) (read-char auth-file)))
              ((or (>= n count) (eof-object? ch)) n)
-           (bytevector-u8-set! 
+           (bytevector-u8-set!
             bv (+ start n) (char->integer ch))))
        #f #f (lambda () (close-port port))))
 
     (define* (read-block)
-      (define size 
+      (define size
         (bytevector-u16-ref (get-bytevector-n port 2) 0 (endianness big)))
 
       (define value (get-bytevector-n port size))
@@ -55,7 +53,7 @@
     (define (auth-short bv)
       (+ (* (bytevector-u8-ref bv 0) 256)
          (bytevector-u8-ref bv 1)))
-    
+
     (define (read-auth)
       (define entry-type
        (case (get-u8 port)
@@ -87,7 +85,7 @@
       (screen . ,(match:substring m 2))))
 
   (define (display-match? xauth-display display-string)
-    (string= 
+    (string=
      (assq-ref (parse-display-name display-string) 'display)
      xauth-display))
 
@@ -104,29 +102,19 @@
   (define protocol-minor-version 0)
   (define xbase "/tmp/.X11-unix/X")
 
-  (define (wrap-socket sock)
-    (define (write! bv start count)
-      (let ((out-bv (make-bytevector count)))
-        (bytevector-copy! bv start out-bv 0 count)
-        (send sock out-bv)))
-    (define (read! bv start count)
-      (let* ((in-bv (make-bytevector count)) 
-             (bytes-read (recv! sock in-bv)))
-        (bytevector-copy! in-bv 0 bv start bytes-read)
-        bytes-read))
-    (define (close) (close-port sock))
-
-    (values
-     (make-custom-binary-input-port "xcb-input" read! #f #f close)
-     (make-custom-binary-output-port "xcb-output" write! #f #f close)))
-
   (define (handle-additional-authentication
            xcb-conn auth-method auth-data response)
     (format #t "X server requires additional authentication. Reason: ~a"
             (xcb->string (xref response 'reason)))
     (error "xml-xcb: Additional authentication not supported at this time"))
 
-  (define (xcb-setup-unpack port)
+  (define (xcb-setup-unpack sock)
+    (define (read! bv start count)
+      (let* ((in-bv (make-bytevector count))
+             (bytes-read (recv! sock in-bv)))
+        (bytevector-copy! in-bv 0 bv start bytes-read)
+        bytes-read))
+    (define port (make-custom-binary-input-port "xcb-input" read! #f #f #f))
     (xcb-struct-unpack
      (case (lookahead-u8 port)
        ((0) SetupFailed)
@@ -142,19 +130,17 @@
 
   (define sock (socket AF_UNIX SOCK_STREAM 0))
 
-  (connect sock AF_UNIX 
-           (string-append 
-            xbase 
+  (connect sock AF_UNIX
+           (string-append
+            xbase
             (assq-ref (parse-display-name display-name) 'display)))
 
   (let ((auth (xcb-match-auth (xcb-get-auths) display-name hostname)))
     (define xcb-conn
-      (receive (in out) 
-          (wrap-socket sock)
-        (receive (buffer get-buffer-bv)
-            (open-bytevector-output-port)
-          (make-xcb-connection
-           in out buffer get-buffer-bv sock (make-hash-table) display-name))))
+      (receive (buffer get-buffer-bv)
+          (open-bytevector-output-port)
+        (make-xcb-connection
+         buffer get-buffer-bv sock (make-hash-table) display-name)))
 
     (define my-SetupRequest
       (make-SetupRequest
@@ -168,12 +154,12 @@
 
     (xcb-enable-xproto! xcb-conn)
 
-    (xcb-struct-pack 
+    (xcb-struct-pack
      SetupRequest my-SetupRequest (xcb-connection-buffer-port xcb-conn))
     (xcb-connection-flush! xcb-conn)
 
-    (let ((reply (xcb-setup-unpack (xcb-connection-input-port xcb-conn))))
-      (cond 
+    (let ((reply (xcb-setup-unpack (xcb-connection-socket xcb-conn))))
+      (cond
        ((Setup? reply)
         (set-xcb-connection-setup! xcb-conn reply)
         ;; (enable-big-requests xcb-conn)
