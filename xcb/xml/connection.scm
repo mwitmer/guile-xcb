@@ -59,8 +59,6 @@
    extensions
    mutex)
   xcb-connection?
-  (input-port xcb-connection-input-port)
-  (output-port xcb-connection-output-port)
   (buffer-port xcb-connection-buffer-port set-xcb-connection-buffer-port!)
   (get-bv xcb-connection-get-bv set-xcb-connection-get-bv!)
   (socket xcb-connection-socket)
@@ -77,10 +75,6 @@
   (display xcb-connection-display)
   (data xcb-connection-data set-xcb-connection-data!)
   (mutex xcb-connection-mutex))
-
-(define-public (xcb-disconnect! xcb-conn)
-  (set-xcb-connection-setup! xcb-conn #f)
-  (close-port (xcb-connection-socket xcb-conn)))
 
 (set-record-type-printer!
  xcb-connection
@@ -102,14 +96,18 @@
    (make-hash-table)
    (make-mutex)))
 
+(define-public (xcb-disconnect! xcb-conn)
+  (set-xcb-connection-setup! xcb-conn #f)
+  (close-port (xcb-connection-socket xcb-conn)))
+
+(define-public (xcb-connected? xcb-conn)
+  (if (xcb-connection-setup xcb-conn) #t #f))
+
 (define (xcb-connection-has-extension? xcb-conn extension)
   (hashq-ref (xcb-connection-extensions xcb-conn) extension))
 
 (define (xcb-connection-use-extension! xcb-conn extension)
   (hashq-set! (xcb-connection-extensions xcb-conn) extension #t))
-
-(define-public (xcb-connected? xcb-conn)
-  (if (xcb-connection-setup xcb-conn) #t #f))
 
 (define-public (xcb-connection-register-events xcb-conn event-hash major-opcode)
   (define xcb-conn-events (all-events xcb-conn))
@@ -122,6 +120,17 @@
   (define add-error!
     (lambda (h) (hashv-set! xcb-conn-errors (+ (car h) major-opcode) (cdr h))))
   (hash-for-each-handle add-error! error-hash))
+
+(define-public (number-for-event xcb-conn event-type)
+  (call-with-prompt
+   'number-for-event
+   (lambda ()
+     (hash-map->list
+      (lambda (num ev)
+        (if (eq? ev event-type) (abort-to-prompt 'number-for-event num)))
+      (all-events xcb-conn))
+     #f)
+   (lambda (cont num) num)))
 
 (define-public (xcb-connection-send xcb-conn major-opcode minor-opcode request)
   (define buffer (xcb-connection-buffer-port xcb-conn))

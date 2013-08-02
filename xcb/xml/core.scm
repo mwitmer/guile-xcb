@@ -22,6 +22,7 @@
   #:use-module (xcb xml type)
   #:use-module (xcb xml enum)
   #:use-module (xcb xml xproto)
+  #:use-module (xcb xml struct)
   #:use-module (xcb xml ext xc_misc)
   #:use-module (xcb xml ext ge)
   #:use-module (xcb xml ext bigreq)
@@ -92,6 +93,14 @@
 
 (define-public (make-xid val xcb-type)
   (make-typed-value val xcb-type))
+
+(define-public (xcb-event->vector xcb-conn event)
+  (define rtd (record-type-descriptor event))
+  (define event-type ((record-accessor rtd 'xcb-struct-type) event))
+  (define raw (xcb-struct-pack-to-bytevector event-type event))
+  (define ev
+   (cons (number-for-event xcb-conn event-type) (bytevector->u8-list raw)))
+  (list->vector (map integer->char ev)))
 
 ;; (define (update-xid-range! xcb-conn inc)
 ;;   (xcb-await ((range (GetXIDRange xcb-conn)))

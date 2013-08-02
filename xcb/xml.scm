@@ -12,6 +12,7 @@
                 #:select (make-new-xid
                           xcb->string
                           xcb-bytes->string
+                          xcb-event->vector
                           string->xcb
                           string->xcb2b
                           make-xid))
@@ -26,6 +27,7 @@
                string->xcb
                string->xcb2b
                xcb->string
+               xcb-event->vector
                xid=
                xenum-ref
                xenum-key-ref
