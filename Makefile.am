@@ -29,7 +29,7 @@ ACLOCAL_AMFLAGS = -I ./m4
 	GUILE_FLAGS="-C ${CURDIR}" @GUILE_TOOLS@ compile $< --output=$@
 
 SCM_SITE_CCACHE_DIR = $(GUILE_LIB_DIR)/guile/$(GUILE_EFFECTIVE_VERSION)/site-ccache
-CLEANFILES = xcb/xml/ext/*.go xcb/xml/*.go language/xml-xcb/*.go
+CLEANFILES = xcb/xml/ext/*.go xcb/xml/*.go language/xml-xcb/*.go flow/*.go xcb/*.go
 
 info_TEXINFOS = guile-xcb.texi
 
