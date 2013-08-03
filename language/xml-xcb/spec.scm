@@ -14,10 +14,12 @@
  ;;    along with Guile XCB.  If not, see <http://www.gnu.org/licenses/>.
 
 (define-module (language xml-xcb spec)
+  #:use-module (ice-9 curried-definitions)
   #:use-module (sxml simple)
+  #:use-module (ice-9 control)
   #:use-module (language xml-xcb compile-scheme)
   #:use-module (system base language)
-  #:export (xml-xcb))
+  #:export (xml-xcb xcb-begin))
 
 (define (make-default-environment)
   (let ((m (make-fresh-user-module)))
@@ -68,7 +70,8 @@
                     (if (eq? (caadr the-whole-thing) '*PI*)
                         (caddr the-whole-thing)
                         (cadr the-whole-thing))))
-              (set! xml (sort (cddr the-important-part) element-compare))
+              (set! xml (cons (list 'xcb-2 (cadr the-important-part))
+                              (sort (cddr the-important-part) element-compare)))
               (list (car the-important-part) (cadr the-important-part))))))))
 
 (define-language xml-xcb
