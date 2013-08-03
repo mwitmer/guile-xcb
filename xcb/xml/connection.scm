@@ -175,16 +175,14 @@
 (define-public (mock-connection server-bytes events errors)
   (receive (buffer-port get-buffer-bytevector)
       (open-bytevector-output-port)
-   (receive (output-port get-bytevector)
-       (open-bytevector-output-port)
-     (let ((conn (make-xcb-connection
-                  buffer-port
-                  get-buffer-bytevector
-                  #f
-                  (make-hash-table) #f)))
-       (xcb-connection-register-events conn events 0)
-       (xcb-connection-register-errors conn errors 0)
-       (values conn get-bytevector)))))
+    (let ((conn (make-xcb-connection
+                 buffer-port
+                 get-buffer-bytevector
+                 (open-bytevector-input-port server-bytes)
+                 (make-hash-table) #f)))
+      (xcb-connection-register-events conn events 0)
+      (xcb-connection-register-errors conn errors 0)
+      (values conn (lambda () ((xcb-connection-get-bv conn)))))))
 
 (define-public (xcb-connection-register-reply-struct
                 xcb-conn sequence-number reply-struct)
@@ -192,12 +190,16 @@
 
 (define (recv1! sock)
   (define bv (make-bytevector 1))
-  (recv! sock bv)
+  (if (file-port? sock)
+      (recv! sock bv)
+      (bytevector-u8-set! bv 0 (get-u8 sock)))
   (bytevector-u8-ref bv 0))
 
 (define (recv-n! sock n)
   (define bv (make-bytevector n))
-  (recv! sock bv)
+  (if (file-port? sock)
+      (recv! sock bv)
+      (bytevector-copy! (get-bytevector-n sock n) 0 bv 0 n))
   bv)
 
 (define* (poll-xcb-connection xcb-conn #:optional async?)
@@ -297,8 +299,11 @@
 
 (define-public (xcb-connection-flush! xcb-conn)
   (define bv ((xcb-connection-get-bv xcb-conn)))
-  (send (xcb-connection-socket xcb-conn) bv)
-  (receive (port get-bv)
+  (define port (xcb-connection-socket xcb-conn))
+  (receive (new-port get-bv)
       (open-bytevector-output-port)
-    (set-xcb-connection-buffer-port! xcb-conn port)
-    (set-xcb-connection-get-bv! xcb-conn get-bv)))
+    (set-xcb-connection-buffer-port! xcb-conn new-port)
+    (set-xcb-connection-get-bv! xcb-conn get-bv)
+    (if (file-port? port)
+        (send port bv)
+        (put-bytevector new-port bv))))

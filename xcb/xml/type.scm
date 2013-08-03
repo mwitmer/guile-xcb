@@ -76,11 +76,9 @@
 
 (define-public (pack-int-proc n)
   (lambda (port value)
-   (let ((bv (make-bytevector n)))
-     (bytevector-uint-set! bv 0 value (native-endianness) n)
-     (for-each (lambda (n)
-                 (put-u8 port (bytevector-u8-ref bv n)))
-               (iota (bytevector-length bv))))))
+    (let ((bv (make-bytevector n)))
+      (bytevector-uint-set! bv 0 value (native-endianness) n)
+      (put-bytevector port bv))))
 
 (define-public (unpack-int-proc n)
   (lambda (port)

@@ -20,6 +20,7 @@
   #:use-module (ice-9 receive)
   #:use-module (xcb xml struct)
   #:use-module (xcb xml records)
+  #:use-module (xcb xml connection)
   #:use-module (system base compile)
   #:use-module (xcb xml type)
   #:use-module (xcb xml enum)
@@ -41,6 +42,7 @@
 (define in-extension? #f)
 
 (define-public test-xml "<test-root><xcb header=\"xkb\"></xcb>
+<xcb-2 header=\"xcb\"></xcb-2>
 	<enum name=\"NKNDetail\">
 		<item name=\"Keycodes\"> <bit>0</bit> </item>
 		<item name=\"Geometry\"> <bit>1</bit> </item>
@@ -284,49 +286,11 @@
                   (newKeyboardDetails . (Geometry))
                   (affectCtrls . (GroupsWrap))
                   (ctrlDetails . (GroupsWrap))))
-  
   (test-equal
    (get-bytevector)
    #vu8(100 1 7 0 12 0 9 0 4 0 4 0 16 0 16 0
             1 0 2 0 0 0 0 8 0 0 0 8)))
 
-(receive (conn get-bytevector) (mock-connection #vu8(1 1 1 0 1 0 0 0
-                                                     4 0 0 0 0 0 1 0 2 0 3 0
-                                                     4 0 0 0 0 0 0 0
-                                                     0 0 0 0 0 0 0 0)
-                                                (make-hash-table) (make-hash-table))
-  (add-hook!
-   (SwitchInReply conn 12 24)
-   (lambda (reply) 
-     (define switch-values (xcb-switch-values SwitchInReply-reply reply))
-     (test-eq (assq-ref switch-values 'list-length) 4)
-     (test-equal (assq-ref switch-values 'my-list) #(1 2 3 4))))
-  (poll-xcb-connection conn))
 
-(receive (conn get-bytevector) (mock-connection #vu8(1 3 1 0 1 0 0 0
-                                                     4 0 0 0 0 0 2 0 4 0 6 0
-                                                     8 0 12 0 0 0 0 0
-                                                     0 0 0 0 0 0 0 0)
-                                                (make-hash-table) (make-hash-table))
-  (add-hook!
-   (SwitchInReply conn 12 24)
-   (lambda (reply) 
-     (define switch-values (xcb-switch-values SwitchInReply-reply reply))
-     (test-eq (assq-ref switch-values 'list-length) 4)
-     (test-equal (assq-ref switch-values 'bob) 12)
-     (test-equal (assq-ref switch-values 'my-list) #(2 4 6 8))))
-  (poll-xcb-connection conn))
-
-(receive (conn get-bytevector) (mock-connection #vu8(1 0 1 0 0 0 0 0
-                                                     4 0 0 0 0 0 0 0
-                                                     0 0 0 0 0 0 0 0
-                                                     0 0 0 0 0 0 0 0)
-                                                (make-hash-table) (make-hash-table))
-  (add-hook!
-   (SwitchInReply conn 12 24)
-   (lambda (reply) 
-     (define switch-values (xcb-switch-values SwitchInReply-reply reply))
-     (test-equal (assq-ref switch-values 'switch-default) 4)))
-  (poll-xcb-connection conn))
 
 (test-end "xcb-switch-test")

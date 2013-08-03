@@ -46,7 +46,7 @@
 
 (define-public test-xml "<test-root><xcb header=\"xproto\"></xcb>
   <!-- Core protocol types -->
-  
+
   <struct name=\"CHAR2B\">
     <field type=\"CARD8\" name=\"byte1\" />
     <field type=\"CARD8\" name=\"byte2\" />
@@ -396,19 +396,19 @@
 (define xcb-events (make-hash-table))
 (define xcb-errors (make-hash-table))
 
-(map 
+(map
  (lambda (sxml)
    (compile sxml #:from xml-xcb #:env (current-module)))
  (cdadr (test-reader test-xml)))
 
-(define-public (string->xcb-char2b-vector str) 
+(define-public (string->xcb-char2b-vector str)
   (let ((str-bv (string->utf16 str (native-endianness))))
     (list->vector
      (fold-right
-      (lambda (el prev)  
-	(cons (make-CHAR2B 
+      (lambda (el prev)
+	(cons (make-CHAR2B
 	       (bytevector-u8-ref str-bv el)
-	       (bytevector-u8-ref str-bv (+ el 1))) prev)) 
+	       (bytevector-u8-ref str-bv (+ el 1))) prev))
       '() (iota (string-length str) 0 2)))))
 
 (test-begin "xcb-test")
@@ -434,7 +434,7 @@
  (pack-xcb-struct-to-bytevector FORMAT (make-FORMAT 3 4 5))
  #vu8(3 4 0 0 0 0 0 5))
 
-(typecheck (make-typed-value 
+(typecheck (make-typed-value
 	    (make-VISUALTYPE 3 'StaticColor 3 3 3 3 3)
 	    VISUALTYPE-type))
 
@@ -466,9 +466,9 @@
       (test-eqv (typed-value-value (vector-ref data32-vec 2)) 33619977))))
 
 (let ((port
-       (open-bytevector-input-port #vu8(2 0 1 0 0 0 0 0 
-					  3 0 0 0 3 3 3 0 
-					  3 0 0 0 3 0 0 0 
+       (open-bytevector-input-port #vu8(2 0 1 0 0 0 0 0
+					  3 0 0 0 3 3 3 0
+					  3 0 0 0 3 0 0 0
 					  3 0 0 0 0 0 0 0))))
   (let ((my-depth
          (xcb-struct-unpack DEPTH port)))
@@ -506,25 +506,25 @@
   (test-eqv (xref my-enumliststruct 'enum_list 0) 'Four)
   (test-error (xset! my-enumliststruct 'enum_list 0 8)))
 
-(receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8() 
-                                                         xcb-events xcb-errors)
-  (CreateWindow xcb-conn 
-		8 
-		(mock-new-xid WINDOW #t) 
-		(mock-new-xid WINDOW) 
+(receive (xcb-conn get-xcb-conn-result)
+    (mock-connection #vu8() xcb-events xcb-errors)
+  (CreateWindow xcb-conn
+		8
+		(mock-new-xid WINDOW #t)
+		(mock-new-xid WINDOW)
 		0 0 480 320 3 'InputOutput 12 CW `((BitGravity . 5)))
   (test-equal (get-xcb-conn-result)
-	      #vu8(1 8 9 0 0 0 0 0 
-                     1 0 0 0 0 0 0 0 
+	      #vu8(1 8 9 0 0 0 0 0
+                     1 0 0 0 0 0 0 0
                      224 1 64 1 3 0 1 0
                      12 0 0 0 16 0 0 0
                      5 0 0 0)))
 
-(receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8() 
+(receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8()
                                                          xcb-events xcb-errors)
   (SetSelectionOwner xcb-conn (mock-new-xid WINDOW #t) (mock-new-xid ATOM) 'CurrentTime)
   (test-equal (get-xcb-conn-result)
-	      #vu8(22 0 4 0 0 0 0 0 
+	      #vu8(22 0 4 0 0 0 0 0
                       1 0 0 0 0 0 0 0)))
 
 (receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8()
@@ -543,25 +543,28 @@
   (xset! my-newDEPTH 'depth 4)
   (test-eqv (xref my-newDEPTH 'depth) 4))
 
-(define (poll-first xcb-conn) (receive (key val) (poll-xcb-connection xcb-conn) (val)))
+(define (poll-first xcb-conn)
+  (receive (key val)
+      (poll-xcb-connection xcb-conn)
+    (xcb-data val)))
 
-(receive (xcb-conn get-xcb-conn-result) 
-    (mock-connection 
-     #vu8(2 2 1 0 2 0 0 0 
-            3 0 0 0 4 0 0 0 
-            5 0 0 0 1 0 2 0 
+(receive (xcb-conn get-xcb-conn-result)
+    (mock-connection
+     #vu8(2 2 1 0 2 0 0 0
+            3 0 0 0 4 0 0 0
+            5 0 0 0 1 0 2 0
             3 0 4 0 7 0 1 0
             0 0 0 0 0 0 0 0)
      xcb-events xcb-errors)
   (let ((my-event (poll-first xcb-conn)))
-    (test-eqv (xref my-event 'detail) 2)
-    (test-eq (KeyPress-event? my-event) #t)))
+    (test-eq (KeyPress-event? my-event) #t)
+    (test-eqv (xref my-event 'detail) 2)))
 
-(receive (xcb-conn get-xcb-conn-result) 
-    (mock-connection 
-     #vu8(3 2 2 0 2 0 0 0 
-            3 0 0 0 4 0 0 0 
-            5 0 0 0 1 0 2 0 
+(receive (xcb-conn get-xcb-conn-result)
+    (mock-connection
+     #vu8(3 2 2 0 2 0 0 0
+            3 0 0 0 4 0 0 0
+            5 0 0 0 1 0 2 0
             3 0 4 0 7 0 1 0
             0 0 0 0 0 0 0 0)
      xcb-events xcb-errors)
@@ -570,11 +573,11 @@
     (test-eqv (xref my-event 'sequence_number) 2)
     (test-eq (KeyRelease-event? my-event) #t)))
 
-(receive (xcb-conn get-xcb-conn-result) 
-    (mock-connection 
-     #vu8(4 0 2 0 1 2 3 4 
-            5 6 7 8 9 0 1 2 
-            3 4 5 6 7 8 9 0 
+(receive (xcb-conn get-xcb-conn-result)
+    (mock-connection
+     #vu8(4 0 2 0 1 2 3 4
+            5 6 7 8 9 0 1 2
+            3 4 5 6 7 8 9 0
             0 0 0 0 0 0 0 0
             0 0 0 0 0 0 0 0)
      xcb-events xcb-errors)
@@ -585,12 +588,12 @@
 	 (data32-vec (xunion-ref my-client-message-data 'data32)))
     (test-eqv (typed-value-value (vector-ref data8-vec 2)) 3)
     (test-eqv (typed-value-value (vector-ref data16-vec 2)) 1541)
-    (test-eqv (typed-value-value (vector-ref data32-vec 2)) 33619977) 
+    (test-eqv (typed-value-value (vector-ref data32-vec 2)) 33619977)
     (test-eq (ClientMessageTest-event? my-event) #t)))
 
 (receive (xcb-conn get-xcb-conn-result)
     (mock-connection
-     #vu8(0 2 1 0 10 0 0 0 
+     #vu8(0 2 1 0 10 0 0 0
             4 0 2 0 0 0 0 0
             0 0 0 0 0 0 0 0
             0 0 0 0 0 0 0 0
@@ -607,7 +610,7 @@
     (test-eqv (xref my-event 'sequence_number) 2)
     (test-eq (KeyRelease-event? my-event) #t)))
 
-(receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8() 
+(receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8()
                                                          xcb-events xcb-errors)
   (QueryTextExtents xcb-conn (mock-new-xid FONT #t) (string->xcb-char2b-vector "12345"))
   (test-equal (get-xcb-conn-result)
@@ -619,72 +622,4 @@
   (test-equal (get-xcb-conn-result)
 	      #vu8(48 0 5 0 0 0 0 0 49 0 50 0 51 0 52 0 53 0 54 0)))
 
-(receive (xcb-conn get-xcb-conn-result) 
-    (mock-connection #vu8(1 0 1 0 0 0 0 0 
-                          1 0 2 0 3 0 4 0 
-                          5 0 0 0 6 0 0 0
-                          7 0 0 0 0 0 0 0
-
-                          1 1 2 0 0 0 0 0 
-                          1 0 2 0 3 0 4 0 
-                          5 0 0 0 6 0 0 0
-                          7 0 0 0 0 0 0 0)
-                     xcb-events xcb-errors)
-  (let ((callback-reached? #f))
-    (add-hook!
-     (QueryTextExtents xcb-conn (mock-new-xid FONT #t) (string->xcb-char2b-vector "Test"))
-     (lambda (reply)
-       (test-eqv (xref reply 'draw_direction) 'LeftToRight)
-       (set! callback-reached? #t)))
-    (poll-first xcb-conn)
-    (test-eq callback-reached? #t))
-  (let ((callback-reached? #f))
-    (add-hook!
-     (QueryTextExtents xcb-conn (mock-new-xid FONT #t) (string->xcb-char2b-vector "Test"))
-     (lambda (reply)
-       (test-eqv (xref reply 'draw_direction) 'RightToLeft)
-       (set! callback-reached? #t)))
-    (poll-first xcb-conn)
-    (test-eq callback-reached? #t)))
-
-(receive (xcb-conn get-xcb-conn-result)
-    (mock-connection #vu8(1 24 1 0 10 0 0 0
-                          4  0 0 0 0 0 0 0
-                          0  0 0 0 0 0 0 0
-                          0  0 0 0 0 0 0 0
-                          1  2 3 4 5 6 7 8
-                          9  1 1 2 3 4 5 6
-                          7  8 9 1 0 0 0 0
-                          0  0 0 0 0 0 0 0
-                          0  0 0 0 0 0 0 0
-                          
-                          1 24 2 0 10 0 0 0
-                          4  0 0 0 0 0 0 0
-                          0  0 0 0 0 0 0 0
-                          0  0 0 0 0 0 0 0
-                          1  2 3 4 5 6 7 8
-                          9  1 1 2 3 4 5 9
-                          7  8 9 1 0 0 0 0
-                          0  0 0 0 0 0 0 0
-                          0  0 0 0 0 0 0 0)
-                     xcb-events xcb-errors)
-  (let ((callback-reached? #f))
-    (add-hook!
-     (GetImage xcb-conn 'ZPixmap (mock-new-xid WINDOW #t) 100 100 100 100 128)
-     (lambda (reply)
-       (test-eqv (xref reply 'data 5) 6)
-       (test-eqv (xref reply 'data 15) 6)
-       (set! callback-reached? #t)))
-   (poll-first xcb-conn)
-   (test-eq callback-reached? #t))
-  (let ((callback-reached? #f))
-    (add-hook!
-     (GetImage xcb-conn 'ZPixmap (mock-new-xid WINDOW #t) 100 100 100 100 128)
-     (lambda (reply)
-       (test-eqv (xref reply 'data 5) 6)
-       (test-eqv (xref reply 'data 15) 9)
-       (set! callback-reached? #t)))
-   (poll-first xcb-conn)
-   (test-eq callback-reached? #t)))
 (test-end "xcb-test")
-
