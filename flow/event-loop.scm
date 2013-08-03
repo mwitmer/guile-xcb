@@ -43,7 +43,7 @@
         (define (dispatch-loop)
           (let inner-loop ()
             (while (not (q-empty? (async-queue)))
-              (% ((q-pop! (async-queue))) loop))
+              ((q-pop! (async-queue))))
             (let ((result (dispatcher)))
               (if (or (done?) (finished?)) result (inner-loop)))))
         (hashq-set! conts key (if (not has-proc?) cont proc))
