@@ -208,7 +208,7 @@
     (define event-data
       (if (not event-struct) (cons event-number bv)
           (xcb-struct-unpack-from-bytevector event-struct bv)))
-    (vector event-struct event-data))
+    (vector event-struct event-data #f))
 
   (define (read-generic-event sock)
     (define extension-opcode (recv1! sock))

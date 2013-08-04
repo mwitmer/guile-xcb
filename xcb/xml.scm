@@ -11,6 +11,9 @@
   #:use-module ((xcb xml core)
                 #:select (make-new-xid
                           xcb->string
+                          out-of-xids
+                          enable-big-requests!
+                          update-xid-range!
                           xcb-bytes->string
                           xcb-event->vector
                           string->xcb
@@ -35,6 +38,9 @@
                xenum-keys
                xenum-values
                xcb-bytes->string
+               out-of-xids
+               enable-big-requests!
+               update-xid-range!
                document-full
                document-brief
                xcb-connect!

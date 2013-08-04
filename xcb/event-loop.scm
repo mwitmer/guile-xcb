@@ -21,10 +21,9 @@
   (error-handlers error-handlers)
   (default-error-handler default-error-handler set-default-error-handler!))
 
-(define-public unknown-event (make-tag 'unknown-event))
 (define-public current-xcb-connection (make-parameter #f))
 (define-public (unsolicit tag) (abort tag #f))
-(define (on-unknown-event event) (notify unknown-event event))
+(define (on-unknown-event event) #f)
 
 (define (basic-error-handler cont arg) (throw 'xcb-error arg))
 
@@ -51,9 +50,14 @@
 
 (define-public unlisten-default!
   (case-lambda
-    ((xcb-conn) (set-event-default! (xcb-connection-data xcb-conn) #f))
+    ((xcb-conn)
+     (set-event-default!
+      (xcb-connection-data xcb-conn)
+      on-unknown-event))
     (()
-     (set-event-default! (xcb-connection-data (current-xcb-connection)) #f))))
+     (set-event-default!
+      (xcb-connection-data (current-xcb-connection))
+      on-unknown-event))))
 
 (define* (inner-listen! xcb-conn event-struct tag proc #:optional guard)
   (define event-dispatchers (event-handlers (xcb-connection-data xcb-conn)))
