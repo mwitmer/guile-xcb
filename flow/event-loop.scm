@@ -35,7 +35,7 @@
         (error "event-loop: Throw to nonexistant error handler")))
       (let ((cont (hashq-ref conts tag)))
         (hashq-remove! conts tag)
- (if cont (cont val)
+        (if cont (cont val)
             (enq! (or (hashq-ref early tag)
                       (hashq-set! early tag (make-q)))
                   val))))
