@@ -13,12 +13,11 @@
 (define-record-type event-loop-data
   (make-event-loop-data-inner
    event-default event-handlers reply-handlers
-   error-handlers default-error-handler)
+   default-error-handler)
   event-loop-data?
   (event-default event-default set-event-default!)
   (event-handlers event-handlers)
   (reply-handlers reply-handlers)
-  (error-handlers error-handlers)
   (default-error-handler default-error-handler set-default-error-handler!))
 
 (define-public current-xcb-connection (make-parameter #f))
@@ -29,8 +28,7 @@
 
 (define (make-event-loop-data)
   (make-event-loop-data-inner
-   on-unknown-event (make-hash-table)
-   (make-hash-table) (make-hash-table)
+   on-unknown-event (make-hash-table) (make-hash-table)
    basic-error-handler))
 
 (define (event-loop-prepared? xcb-conn)
@@ -121,17 +119,11 @@
     ((xcb-conn sequence-number reply-proc error-proc)
      (hashv-set!
       (reply-handlers (xcb-connection-data xcb-conn))
-      sequence-number reply-proc)
-     (hashv-set!
-      (error-handlers (xcb-connection-data xcb-conn))
-      sequence-number error-proc))
+      sequence-number reply-proc))
     ((sequence-number reply-proc error-proc)
      (hashv-set!
       (reply-handlers (xcb-connection-data (current-xcb-connection)))
-      sequence-number reply-proc)
-     (hashv-set!
-      (error-handlers (xcb-connection-data (current-xcb-connection)))
-      sequence-number error-proc))))
+      sequence-number reply-proc))))
 
 (define (default-loop-proc) (abort (make-tag 'forever)))
 
@@ -150,15 +142,14 @@
         (define events (event-handlers loop-data))
         (define default (event-default loop-data))
         (define replies (reply-handlers loop-data))
-        (define errors (error-handlers loop-data))
         (define dispatch-proc
           (case data-type
             ((event)
              (if (hashq-get-handle events (xcb-struct data))
                  (lambda (r) (dispatch-event events (xcb-struct data) r))
                  default))
-            ((reply) (hashv-ref replies (xcb-sequence-number data)))
-            ((error) (hashv-ref errors (xcb-sequence-number data)))
+            ((reply)
+             (and=> (hashv-remove! replies (xcb-sequence-number data)) cdr))
             (else #f)))
         (if (and dispatch-proc data) (dispatch-proc (xcb-data data)) #f))
       (call-with-values poll dispatch))
@@ -205,7 +196,7 @@
     ((_ tag stop! reset!
         (reset-expr ...)
         (((event-struct name) body body* ...) ...))
-     (letrec ((stop! (lambda () (unlisten! event-struct tag) ...))
+     (letrec* ((stop! (lambda () (unlisten! event-struct tag) ...))
                (reset!
                 (lambda ()
                   reset-expr ...
