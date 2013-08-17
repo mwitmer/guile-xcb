@@ -393,11 +393,11 @@
       (delq 'value-mask (map car required-fields))
       (map car required-fields)))
 
-(define (get-field-names-with-valueparam-or-switch fields valueparam switch)
-  (cond
-   (valueparam (append fields 'valueparams))
-   (switch (append fields `(,(cadadr switch))))
-   (else fields)))
+(define (get-field-names-with-valueparam fields valueparam)
+  (if valueparam (append fields 'valueparams) fields))
+
+(define (get-field-names-with-switch fields switch)
+  (if switch (append fields (list (cadadr switch))) fields))
 
 (define* (expression-match exp #:optional ignore-errors?)
   (sxml-match exp
@@ -526,8 +526,10 @@
   (define immediate-field-argument-names
     (get-immediate-field-names fields-syntax valueparam-syntax))
   (define field-argument-names
-    (get-field-names-with-valueparam-or-switch
-     immediate-field-argument-names valueparam-syntax switch-syntax))
+    (get-field-names-with-switch
+     (get-field-names-with-valueparam
+      immediate-field-argument-names valueparam-syntax)
+     switch-syntax))
   (define struct-syntax
     (get-define-xcb-struct-syntax
      request-struct-name
@@ -542,21 +544,18 @@
         `(values #f #f)))
   (define parsed-opcode (parse-dec-or-hex-integer opcode))
   (define construct-struct-arguments
-    (let ((basic-field-args
-           (if valueparam-syntax
-
-               field-argument-names)))
-     `(list
-       ,@(append
-          (map (lambda (field) `(cons (quote ,field) ,field))
-               immediate-field-argument-names)
-          (if valueparam-syntax
-              (list
-               `(cons (quote ,(assq-ref valueparam-syntax 'value-mask-name))
-                      valuemask)
-               `(cons (quote ,(assq-ref valueparam-syntax 'value-list-name))
-                      valuelist))
-              '())))))
+    `(list
+      ,@(append
+         (map (lambda (field) `(cons (quote ,field) ,field))
+              (get-field-names-with-switch
+               immediate-field-argument-names switch-syntax))
+         (if valueparam-syntax
+             (list
+              `(cons (quote ,(assq-ref valueparam-syntax 'value-mask-name))
+                     valuemask)
+              `(cons (quote ,(assq-ref valueparam-syntax 'value-list-name))
+                     valuelist))
+             '()))))
   `(begin
      ,struct-syntax
      ,@(if has-reply? (list (element-syntax-syntax (car replies))) '())
@@ -658,7 +657,7 @@
                    fields
                    `(,(car fields) .
                      (,(make-element-syntax
-                        'field '(sequence_number CARD16) #f) .
+                        'field '(sequence-number CARD16) #f) .
                         ,(cdr fields)))) 31 #f)
              (hashv-set! xcb-events ,(parse-dec-or-hex-integer number) ,event-struct-name))
           (if (= (length doc) 1)

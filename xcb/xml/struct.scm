@@ -171,7 +171,7 @@
      (inner-type xcb-struct) (xcb-switch-name (switch xcb-struct))))
   (accessor rec))
 
-(define* ((xcb-struct-field-ref-proc xcb-struct rec len-ht #:optional alist) field)
+(define ((xcb-struct-field-ref-proc xcb-struct rec len-ht alist) field)
   "Returns a procedure that will return the value for FIELD in the
 given REC. If FIELD is not present in REC, it will check to see if
 FIELD is actually in the form LIST-len, and if so, return the length
@@ -340,9 +340,8 @@ as an xcb list type" value))
      (cond
       ((exprfield-resolve xcb-struct rec field) => pack-value)
       ((assq field-name alist) => (pack-value-in-assoc field-type))
-      (else
-       (pack-value-or-list
-        ((record-accessor (inner-type xcb-struct) field-name) rec))))))
+      (else (pack-value-or-list
+             ((record-accessor (inner-type xcb-struct) field-name) rec))))))
 
 (define-public (xcb-struct-pack rec port)
   (define xcb-struct (xcb-struct-for-rec rec))
@@ -350,7 +349,8 @@ as an xcb list type" value))
     (define struct-switch (switch xcb-struct))
     (define accessor
       (record-accessor (inner-type xcb-struct) (xcb-switch-name struct-switch)))
-    (switch-pack struct-switch xcb-struct rec (accessor rec) port))
+    (switch-pack
+     struct-switch xcb-struct rec (make-hash-table) (accessor rec) port))
   (define packed
    (call-with-values (lambda () (open-bytevector-output-port))
      (lambda (port get-bytevector)
@@ -508,25 +508,27 @@ key ~a" val key))))
       (or (and=> (xcb-switch-default switch) unpack-default) '())
       unpack-results))
 
-(define (switch-pack switch xcb-struct rec alist port)
+(define (switch-pack switch xcb-struct rec len-ht alist port)
   (define bitmask
-    ((xcb-switch-expression switch) (xcb-struct-field-ref-proc xcb-struct rec '())))
+    ((xcb-switch-expression switch) 
+     (xcb-struct-field-ref-proc xcb-struct rec len-ht '())))
   (define (case-expression-pack case-expression)
     (define bitmatch ((xcb-case-expression-expression case-expression)
-                      (xcb-struct-field-ref-proc xcb-struct rec '())))
+                      (xcb-struct-field-ref-proc xcb-struct rec len-ht '())))
     (define (pack-fields)
       (define fields (xcb-case-expression-fields case-expression))
       (define (pack-switch switch)
-        (switch-pack switch xcb-struct rec alist port))
-      (map-in-order (pack-field xcb-struct rec port alist) fields)
+        (switch-pack switch xcb-struct rec len-ht alist-cons port))
+      (for-each (pack-field xcb-struct rec port alist) fields)
       (and=> (xcb-case-expression-switch case-expression) pack-switch)
       (filter (lambda (a) (memq (car a) (map car fields))) alist))
     (if (bitmatch? bitmatch bitmask) (pack-fields) '()))
   (define (pack-default default)
     (define (pack-with-match key-val)
       ((pack-field xcb-struct rec port alist) default))
-    (or (and=> (assq (car default) alist) pack-with-match)
-        (error "xml-xcb: No default value provided for switch")))
+    (or (and=> (assq (car default) alist) pack-with-match) #f
+        ;(error "xml-xcb: No default value provided for switch")
+        ))
   (define (case-expression-accum ce fields)
     (append (case-expression-pack ce) fields))
   (define pack-results

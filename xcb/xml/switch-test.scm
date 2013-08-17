@@ -36,7 +36,7 @@
       (lambda ()
         (open-bytevector-output-port))
     (lambda (port get-bytevector)
-      (xcb-struct-pack xcb-struct rec port)
+      (xcb-struct-pack rec port)
       (get-bytevector))))
 
 (define in-extension? #f)
@@ -253,7 +253,7 @@
    (cdadr (test-reader test-xml)))
   (set! no-new-xcb-module? #t))
 
-(map 
+(map
  (lambda (sxml)
    (compile sxml #:from xml-xcb #:env (current-module)))
  (cdadr (test-reader test-xml)))
@@ -263,29 +263,29 @@
 (test-begin "xcb-switch-test")
 
 (receive (conn get-bytevector) (mock-connection #vu8() (make-hash-table) (make-hash-table))
-  (SelectEvents conn 12 
-                '(NewKeyboardNotify)  
-                '(StateNotify) 
-                '(StateNotify) 
-                '(KeyActions)
-                '(KeyActions) 
-                '((affectNewKeyboard . (Keycodes)) 
-                  (newKeyboardDetails . (Geometry))))
+  (select-events/c conn 12
+                 '(new-keyboard-notify)
+                 '(state-notify)
+                 '(state-notify)
+                 '(key-actions)
+                 '(key-actions)
+                 '((affect-new-keyboard . (keycodes))
+                   (new-keyboard-details . (geometry))))
   (test-equal
    (get-bytevector)
    #vu8(100 1 5 0 12 0 1 0 4 0 4 0 16 0 16 0 1 0 2 0)))
 
 (receive (conn get-bytevector) (mock-connection #vu8() (make-hash-table) (make-hash-table))
-  (SelectEvents conn 12 
-                '(NewKeyboardNotify ControlsNotify)  
-                '(StateNotify) 
-                '(StateNotify) 
-                '(KeyActions)
-                '(KeyActions) 
-                '((affectNewKeyboard . (Keycodes)) 
-                  (newKeyboardDetails . (Geometry))
-                  (affectCtrls . (GroupsWrap))
-                  (ctrlDetails . (GroupsWrap))))
+  (select-events/c conn 12
+                '(new-keyboard-notify controls-notify)
+                '(state-notify)
+                '(state-notify)
+                '(key-actions)
+                '(key-actions)
+                '((affect-new-keyboard . (keycodes))
+                  (new-keyboard-details . (geometry))
+                  (affect-ctrls . (groups-wrap))
+                  (ctrl-details . (groups-wrap))))
   (test-equal
    (get-bytevector)
    #vu8(100 1 7 0 12 0 9 0 4 0 4 0 16 0 16 0
