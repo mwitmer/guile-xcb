@@ -54,69 +54,61 @@
   (define action (make-parameter 'none))
   (define win (make-parameter #f))
 
-  (define (on-motion-notify motion-notify notify)
-    (with-replies ((pointer QueryPointer root) (geom GetGeometry (win)))
+  (define (on-motion-notify motion-notify)
+    (with-replies ((pointer query-pointer root) (geom get-geometry (win)))
       (define (new-coord p g s) (if (> (+ p g) s) (- s g) p))
       (if (eq? (action) 'move)
-          (ConfigureWindow
-           xcb-conn (win) ConfigWindow
-           `((X . ,(new-coord (xref pointer 'root_x)
-                              (xref geom 'width)
-                              (xref screen 'width_in_pixels)))
-             (Y . ,(new-coord (xref pointer 'root_y)
-                              (xref geom 'height)
-                              (xref screen 'height_in_pixels)))))
-          (ConfigureWindow
-           xcb-conn (win) ConfigWindow
-           `((Width . ,(- (xref pointer 'root_x) (xref geom 'x)))
-             (Height . ,(- (xref pointer 'root_y) (xref geom 'y))))))))
+          (configure-window
+           (win)
+           #:x (new-coord (xref pointer 'root-x)
+                          (xref geom 'width)
+                          (xref screen 'width-in-pixels))
+           #:y (new-coord (xref pointer 'root-y)
+                          (xref geom 'height)
+                          (xref screen 'height-in-pixels)))
+          (configure-window
+           (win)
+           #:width (- (xref pointer 'root-x) (xref geom 'x))
+           #:height (- (xref pointer 'root-y) (xref geom 'y))))))
 
-  (define (on-button-release button-release notify)
-    (UngrabPointer xcb-conn xcb-current-time))
+  (define (on-button-release button-release)
+    (ungrab-pointer xcb-current-time))
 
   (define (on-window-click window button-press)
-    (ConfigureWindow
-     xcb-conn window ConfigWindow
-     `((StackMode . ,(xenum-ref StackMode 'Above))))
-    (with-replies ((geom GetGeometry window))
+    (configure-window window #:stack-mode (xenum-ref stack-mode 'above))
+    (with-replies ((geom get-geometry window))
       (cond
        ((= (xref button-press 'detail) 1)
         (action 'move)
-        (WarpPointer xcb-conn (xcb-none WINDOW) window 0 0 0 0 1 1))
+        (warp-pointer (xcb-none xwindow) window 0 0 0 0 1 1))
        (else
         (action 'resize)
-        (WarpPointer xcb-conn (xcb-none WINDOW) window 0 0 0 0
-                     (xref geom 'width) (xref geom 'height))))
-      (GrabPointer
-       xcb-conn #f root '(ButtonRelease ButtonMotion PointerMotionHint)
-       'Async 'Async root (xcb-none CURSOR) xcb-current-time)))
+        (warp-pointer (xcb-none xwindow) window 0 0 0 0
+                        (xref geom 'width) (xref geom 'height))))
+      (grab-pointer
+       #f root '(button-release button-motion pointer-motion-hint)
+       'async 'async root (xcb-none xcursor) xcb-current-time)))
 
-  (define (on-button-press button-press notify)
+  (define (on-button-press button-press)
     (win (xref button-press 'child))
     (if (not (= (xid->integer (win)) 0)) (on-window-click (win) button-press)))
 
-  (define (on-key-press key-press notify)
+  (define (on-key-press key-press)
     (cond
      ((and (win) (= (xref key-press 'detail) 67))
-      (ConfigureWindow
-       xcb-conn (win) ConfigWindow
-       `((StackMode . ,(xenum-ref StackMode 'Below)))))
+      (configure-window (win) #:stack-mode (xenum-ref stack-mode 'below)))
      ((= (xref key-press 'detail) 24) (xcb-disconnect! xcb-conn))))
 
-  (listen! MotionNotify-event on-motion-notify)
-  (listen! ButtonRelease-event on-button-release)
-  (listen! ButtonPress-event on-button-press)
-  (listen! KeyPress-event on-key-press)
+  (listen! motion-notify-event 'mn on-motion-notify)
+  (listen! button-release-event 'br on-button-release)
+  (listen! button-press-event 'bp on-button-press)
+  (listen! key-press-event 'kp on-key-press)
 
-  (GrabKey xcb-conn #t root '(#{1}#) 67 'Async 'Async)
-  (GrabKey xcb-conn #t root '(Control #{1}#) 24 'Async 'Async)
-  (GrabButton
-   xcb-conn #f root '(ButtonPress ButtonRelease) 'Async 'Async
-   root (xcb-none CURSOR) '#{1}# '(#{1}#))
-  (GrabButton
-   xcb-conn #f root '(ButtonPress ButtonRelease) 'Async 'Async
-   root (xcb-none CURSOR) '#{3}# '(#{1}#))
-
+  (grab-key #t root '(#{1}#) 67 'async 'async)
+  (grab-key #t root '(control #{1}#) 24 'async 'async)
+  (grab-button #f root '(button-press button-release) 'async 'async root
+               (xcb-none xcursor) '#{1}# '(#{1}#))
+  (grab-button #f root '(button-press button-release) 'async 'async root
+                 (xcb-none xcursor) '#{3}# '(#{1}#))
   (spawn-server)
-
   (wm-shell-command "xterm -e 'telnet localhost 37146'"))

@@ -27,22 +27,17 @@
     (define xcb-conn (current-xcb-connection))
     (define root (xref (xcb-connection-setup xcb-conn) 'roots 0))
     (define root-window (xref root 'root))
-    (define my-window (make-new-xid xcb-conn WINDOW))
-    (listen! KeyPress-event
+    (define my-window (make-new-xid xcb-conn xwindow))
+    (listen! key-press-event 'kp
              (lambda (key-press)
                (define keycode (xref key-press 'detail))
                (format #t "KeyPress: ~a\n" keycode)
                (format #t "KeyRelease: ~a\n" (solicit 'release))
                (if (= keycode 9) (xcb-disconnect! xcb-conn))))
-    (listen! KeyRelease-event
+    (listen! key-release-event 'kr
              (lambda (key-release)
                (notify 'release (xref key-release 'detail))))
-    (listen-default!
-     (lambda (unknown-event notify)
-       (format #t "Unknown-event: ~a\n" unknown-event)))
-    (CreateWindow
-     xcb-conn 24 my-window root-window 0 0 200 200 0 'CopyFromParent 0 CW
-     `((BackPixel . ,(xref root 'white_pixel))
-       (EventMask
-        . ,(xenum-or EventMask 'KeyRelease 'KeyPress))))
-    (MapWindow xcb-conn my-window)))
+    (create-window 24 my-window root-window 0 0 200 200 0 'copy-from-parent 0
+                     #:back-pixel (xref root 'white-pixel)
+                     #:event-mask (xenum-or event-mask 'key-release 'key-press))
+    (map-window my-window)))

@@ -122,7 +122,7 @@
     (iota list-length))))
 
 (define (xcb-union-read-data xcb-union port type)
-  (define obj ((xcb-type-unpack type) port)) 
+  (define obj ((xcb-type-unpack type) port))
   (make-typed-value obj type))
 
 (define-public (xunion-ref rec field)

@@ -117,9 +117,9 @@
     (define port (make-custom-binary-input-port "xcb-input" read! #f #f #f))
     (xcb-struct-unpack
      (case (lookahead-u8 port)
-       ((0) SetupFailed)
-       ((1) Setup)
-       ((2) SetupAuthenticate))
+       ((0) setup-failed)
+       ((1) setup)
+       ((2) setup-authenticate))
      port))
 
   (define byte-order
@@ -140,37 +140,32 @@
       (receive (buffer get-buffer-bv)
           (open-bytevector-output-port)
         (make-xcb-connection
-         buffer get-buffer-bv sock (make-hash-table) display-name)))
+         buffer get-buffer-bv sock (make-hash-table) display-name
+         xcb-convert-from-string)))
 
-    (define my-SetupRequest
-      (make-SetupRequest
+    (define my-setup-request
+      (make-setup-request
        byte-order
        protocol-major-version
        protocol-minor-version
-       (string-length (assq-ref auth 'protocol))
-       (bytevector-length (assq-ref auth 'data))
        (string->xcb (assq-ref auth 'protocol))
        (bv->xcb-string (assq-ref auth 'data))))
 
-    (xcb-enable-xproto! xcb-conn)
+    (xcb-enable-xproto!/c xcb-conn #f)
 
-    (xcb-struct-pack
-     SetupRequest my-SetupRequest (xcb-connection-buffer-port xcb-conn))
+    (xcb-struct-pack my-setup-request (xcb-connection-buffer-port xcb-conn))
     (xcb-connection-flush! xcb-conn)
 
     (let ((reply (xcb-setup-unpack (xcb-connection-socket xcb-conn))))
       (cond
-       ((Setup? reply)
+       ((setup? reply)
         (set-xcb-connection-setup! xcb-conn reply)
-        ;; (enable-big-requests xcb-conn)
-        ;; (enable-xc-misc xcb-conn)
-        ;; (enable-generic-events xcb-conn)
-        (let ((max-length (xref reply 'maximum_request_length)))
+        (let ((max-length (xref reply 'maximum-request-length)))
           (set-original-maximum-request-length! xcb-conn max-length)
           (set-maximum-request-length! xcb-conn max-length))
         xcb-conn)
-       ((SetupFailed? reply)
+       ((setup-failed? reply)
         (display (xcb->string (xref reply 'reason)))
         #f)
-       ((SetupAuthenticate? reply)
+       ((setup-authenticate? reply)
         (display "Further authentication required, but not supported."))))))

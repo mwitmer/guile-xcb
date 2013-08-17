@@ -30,6 +30,7 @@
             xcb-connection-has-extension?
             xcb-connection-use-extension!
             xcb-connection-display
+            xcb-connection-string-converter
             next-request-number
             set-xcb-connection-last-xid!
 	    make-xcb-connection
@@ -42,6 +43,7 @@
             xcb-connection-data set-xcb-connection-data!
             all-events all-errors))
 
+(define-public current-xcb-connection (make-parameter #f))
 (define generic-event-number 35)
 (define max-uint16 (- (expt 2 16) 1))
 
@@ -57,7 +59,8 @@
    errors
    display
    extensions
-   mutex)
+   mutex
+   string-converter)
   xcb-connection?
   (buffer-port xcb-connection-buffer-port set-xcb-connection-buffer-port!)
   (get-bv xcb-connection-get-bv set-xcb-connection-get-bv!)
@@ -72,6 +75,7 @@
   (events all-events)
   (errors all-errors)
   (extensions xcb-connection-extensions)
+  (string-converter xcb-connection-string-converter)
   (display xcb-connection-display)
   (data xcb-connection-data set-xcb-connection-data!)
   (mutex xcb-connection-mutex))
@@ -84,7 +88,8 @@
     (display "#<xcb-connection (not connected)>"))))
 
 (define-public
-  (make-xcb-connection buffer-port get-bv socket request-structs display)
+  (make-xcb-connection buffer-port get-bv socket request-structs display
+                       string-converter)
   (inner-make-xcb-connection
    buffer-port get-bv
    socket
@@ -94,7 +99,8 @@
    (make-hash-table)
    display
    (make-hash-table)
-   (make-mutex)))
+   (make-mutex)
+   string-converter))
 
 (define-public (xcb-disconnect! xcb-conn)
   (set-xcb-connection-setup! xcb-conn #f)
@@ -179,7 +185,7 @@
                  buffer-port
                  get-buffer-bytevector
                  (open-bytevector-input-port server-bytes)
-                 (make-hash-table) #f)))
+                 (make-hash-table) #f #f)))
       (xcb-connection-register-events conn events 0)
       (xcb-connection-register-errors conn errors 0)
       (values conn (lambda () ((xcb-connection-get-bv conn)))))))
@@ -307,3 +313,9 @@
     (if (file-port? port)
         (send port bv)
         (put-bytevector new-port bv))))
+
+(define extension-infos (make-hash-table))
+
+(define-public (get-extension-info key) (hashq-ref extension-infos key))
+(define-public (add-extension-info! key internal-name enable-proc)
+  (hashq-set! extension-infos key (cons internal-name enable-proc)))

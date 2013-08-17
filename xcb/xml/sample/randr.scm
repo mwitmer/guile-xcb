@@ -16,13 +16,13 @@
 ;;; partial xrandr clone: prints display info and lets you change a
 ;;; monitor's resolutions and offsets or disable it
 
-;;; USAGE: (xrandr {OP args ...} {OP args ...} ...)  
+;;; USAGE: (xrandr {OP args ...} {OP args ...} ...)
 ;;;
 ;;; (The curly braces are just to show logical separation between
 ;;; arguments; they shouldn't be included in the actual function
 ;;; call.)
 ;;;
-;;; {OP args ...} is one of the following: 
+;;; {OP args ...} is one of the following:
 ;;;
 ;;; 'print : Print display info a la the xrandr command line tool
 ;;;
@@ -45,21 +45,21 @@
 ;;; Set the resolution of monitor VGA-0 to 1680x1050 and move DVI-0 to (1680, 0)
 
 (define-module (xcb xml sample randr)
-  #:use-module (srfi srfi-1) 
-  #:use-module (ice-9 curried-definitions) 
-  #:use-module (ice-9 format) 
-  #:use-module (ice-9 receive) 
-  #:use-module (ice-9 regex) 
-  #:use-module (xcb xml) 
-  #:use-module (xcb event-loop) 
+  #:use-module (srfi srfi-1)
+  #:use-module (ice-9 curried-definitions)
+  #:use-module (ice-9 format)
+  #:use-module (ice-9 receive)
+  #:use-module (ice-9 regex)
+  #:use-module (xcb xml)
+  #:use-module (xcb event-loop)
   #:use-module (xcb xml xproto)
   #:use-module (xcb xml ext randr)
   #:export (xrandr))
 
 ;; Handling modes
 
-(define ((mode-res= info1) info2) 
-  (and 
+(define ((mode-res= info1) info2)
+  (and
    (= (xref info1 'width) (xref info2 'width))
    (= (xref info1 'height) (xref info2 'height))))
 
@@ -67,36 +67,36 @@
   (define (get n) (xref mode n))
   (define vtotal
     (cond
-     ((memq 'DoubleScan (get 'mode_flags)) (* (get 'vtotal) 2))
-     ((memq 'Interlace (get 'mode_flags)) (/ (get 'vtotal) 2))
+     ((memq 'double-scane (get 'mode-flags)) (* (get 'vtotal) 2))
+     ((memq 'interlace (get 'mode-flags)) (/ (get 'vtotal) 2))
      (else (get 'vtotal))))
   (exact->inexact
-   (if (logand (get 'htotal) vtotal) 
-       (/ (get 'dot_clock) (* (get 'htotal) vtotal))
+   (if (logand (get 'htotal) vtotal)
+       (/ (get 'dot-clock) (* (get 'htotal) vtotal))
        0)))
 
 ;; Handling rotations
 
 (define all-rotations
-  '(Rotate_0 Rotate_270 Rotate_180 Rotate_90 Reflect_X Reflect_Y))
+  '(rotate-0 rotate-270 rotate-180 rotate-90 reflect-x reflect-y))
 
 (define (sort-rotations rotations)
   (sort rotations
-        (lambda (rot1 rot2) 
+        (lambda (rot1 rot2)
           (> (length (memq rot1 all-rotations))
              (length (memq rot2 all-rotations))))))
 
 (define rotation-names
-  '((Rotate_0 . "normal")
-    (Reflect_X . "x axis")
-    (Reflect_Y . "y axis")
-    (Rotate_90 . "right")
-    (Rotate_270 . "left")
-    (Rotate_180 . "inverted")))
+  '((rotate-0 . "normal")
+    (reflect-x . "x axis")
+    (reflect-y . "y axis")
+    (rotate-90 . "right")
+    (rotate-270 . "left")
+    (rotate-180 . "inverted")))
 
 ;; Make sure the x connection is always cleaned up
 
-(define* xrandr 
+(define* xrandr
   (lambda args
     (define xconn (make-parameter #f))
     (dynamic-wind
@@ -109,16 +109,16 @@
 
   (define setup (xcb-connection-setup xconn))
   (define enable-randr (solicit (xcb-enable-randr! xconn)))
-  (define randr-version (reply-for QueryVersion 1 4))
+  (define randr-version (reply-for query-version 1 4))
   (define screen (xref setup 'roots 0))
   (define root (xref screen 'root))
 
   ;; Screen resources
 
-  (define screen-resources (reply-for GetScreenResourcesCurrent root))
+  (define screen-resources (reply-for get-screen-resources-current root))
 
   (define outputs (xref screen-resources 'outputs))
-  (define crtcs (xref screen-resources 'crtcs))  
+  (define crtcs (xref screen-resources 'crtcs))
 
   ;; output/crtc/mode info from X server
 
@@ -130,11 +130,11 @@
       (cons (xid->integer xid) (delay-reply request xid xcb-current-time)))
     (map solicit-cdr (map make-request (vector->list xids))))
 
-  (define screen-info (reply-for GetScreenInfo root))
-  (define output-infos (get-infos GetOutputInfo outputs))
-  (define crtc-infos (get-infos GetCrtcInfo crtcs))
-  (define mode-infos 
-    (map mode-pair 
+  (define screen-info (reply-for get-screen-info root))
+  (define output-infos (get-infos get-output-info outputs))
+  (define crtc-infos (get-infos get-crtc-info crtcs))
+  (define mode-infos
+    (map mode-pair
          (vector->list (xref screen-resources 'modes))))
 
   (define (xid-lookup info-alist xid) (assv-ref info-alist (xid->integer xid)))
@@ -150,16 +150,16 @@
 
   (define (get-current-mode output-info)
     (define crtc-info (xid-lookup crtc-infos (xref output-info 'crtc)))
-    (if (GetCrtcInfo-reply? crtc-info) 
-        (xid-lookup mode-infos (xref crtc-info 'mode)) 
+    (if (get-crtc-info-reply? crtc-info)
+        (xid-lookup mode-infos (xref crtc-info 'mode))
         #f))
-  
+
   (define (get-mode-by-resolution width height output-info)
-    (define (match mode) 
+    (define (match mode)
       (and (= (xref mode 'width) width)
            (= (xref mode 'height) height)
            (memv (xref mode 'id)
-                 (map xid->integer 
+                 (map xid->integer
                       (vector->list (xref output-info 'modes))))))
     (find match (map cdr mode-infos)))
 
@@ -176,13 +176,13 @@
         (first-available-crtc
          (map crtc-lookup (vector->list (xref output-info 'crtcs))))))
 
-  (define (get-crtc-xid crtc-info) (info-lookup crtc-infos crtc-info CRTC))
+  (define (get-crtc-xid crtc-info) (info-lookup crtc-infos crtc-info xcrtc))
 
   ;; Query dimensions
 
   (define (crtc-dimens ci)
     (define (get p) (xref ci p))
-    (if (or (not ci) (BadCrtc-error? ci)) 
+    (if (or (not ci) (bad-crtc-error? ci))
         '((x . 0) (y . 0) (height . 0) (width . 0))
         `((x . ,(get 'x)) (y . ,(get 'y))
           (height . ,(get 'height)) (width . ,(get 'width)))))
@@ -208,33 +208,33 @@
   ;; Update X resources
 
   (define (crtc-modify! ci-entry transform)
-    (define result (transform (cdr ci-entry) (make-xid (car ci-entry) CRTC)))
-    (if (SetCrtcConfig-reply? result)
+    (define result (transform (cdr ci-entry) (make-xid (car ci-entry) xcrtc)))
+    (if (set-crtc-config-reply? result)
         (case (xref result 'status)
-          ((Success) result)
-          ((InvalidTime) (error "Invalid time provided in call \
+          ((success) result)
+          ((invalid-time) (error "Invalid time provided in call \
 to SetCrtcConfig"))
-          ((Failed) (error "Call to SetCrtcConfig failed")))
+          ((failed) (error "Call to SetCrtcConfig failed")))
         result))
 
   (define (disable-crtc! ci-entry)
     (define (disable ci xid)
-      (reply-for SetCrtcConfig
+      (reply-for set-crtc-config
                  xid xcb-current-time (xref screen-resources 'timestamp)
-                 (xref ci 'x) (xref ci 'y) (xcb-none MODE) 
+                 (xref ci 'x) (xref ci 'y) (xcb-none xmode)
                  (xref ci 'rotation) #()))
     (crtc-modify! ci-entry disable))
 
   (define (update!)
-    (define ((if-changed proc) entry) 
+    (define ((if-changed proc) entry)
       (if (hashv-ref change-xids (car entry)) (proc entry)))
     (define (update-screen-size! dimens)
-      (SetScreenSize xconn root (car dimens) (cdr dimens)
-                     (xref screen 'width_in_millimeters)
-                     (xref screen 'height_in_millimeters)))    
+      (set-screen-size root (car dimens) (cdr dimens)
+                         (xref screen 'width-in-millimeters)
+                         (xref screen 'height-in-millimeters)))
     (define (update-crtc! ci-entry)
       (define (update ci xid)
-        (reply-for SetCrtcConfig
+        (reply-for set-crtc-config
                    xid
                    (xref ci 'timestamp) (xref screen-resources 'timestamp)
                    (xref ci 'x) (xref ci 'y) (xref ci 'mode)
@@ -243,36 +243,36 @@ to SetCrtcConfig"))
       (if (dimensions-too-small? new-screen-size) (disable-crtc! ci-entry))
       (update-screen-size! new-screen-size)
       (crtc-modify! ci-entry update))
-    (GrabServer xconn)
+    (grab-server)
     (for-each (if-changed update-crtc!) crtc-infos)
-    (UngrabServer xconn))
+    (ungrab-server))
 
   ;; Format output
 
   (define (format-screen-info)
     (define screen-sizes (xref screen-info 'sizes))
-    (define size-range (reply-for GetScreenSizeRange root))
+    (define size-range (reply-for get-screen-size-range root))
     (define current-size (get-screen-size (get-output-dimensions)))
 
     (let ((get (lambda (n) (xref size-range n))))
       (format #f "Screen ~a: minimum ~a x ~a, current ~a x ~a, maximum ~a x ~a"
               (string-take-right (xcb-connection-display xconn) 1)
-              (get 'min_width) (get 'min_height)
+              (get 'min-width) (get 'min-height)
               (car current-size) (cdr current-size)
-              (get 'max_width) (get 'max_height))))
+              (get 'max-width) (get 'max-height))))
 
   (define (format-connected-output-info output-info)
     (define output-name (xcb-bytes->string (xref output-info 'name)))
     (define crtc-info (get-crtc-for-output output-info))
-    (define rotations 
+    (define rotations
       (map (lambda (rotation) (assq-ref rotation-names rotation))
            (sort-rotations (xref crtc-info 'rotations))))
-    (format #f "~a connected ~ax~a+~a+~a ~a ~amm x ~amm" 
-            output-name 
-            (xref crtc-info 'width) (xref crtc-info 'height) 
-            (xref crtc-info 'x) (xref crtc-info 'y) 
+    (format #f "~a connected ~ax~a+~a+~a ~a ~amm x ~amm"
+            output-name
+            (xref crtc-info 'width) (xref crtc-info 'height)
+            (xref crtc-info 'x) (xref crtc-info 'y)
             rotations
-            (xref output-info 'mm_width) (xref output-info 'mm_height)))
+            (xref output-info 'mm-width) (xref output-info 'mm-height)))
 
   (define (format-disconnected-output-info output-info)
     (define output-name (xcb-bytes->string (xref output-info 'name)))
@@ -287,8 +287,8 @@ to SetCrtcConfig"))
       (define current-mode (get-current-mode output-info))
       (define mode-xids (xref output-info 'modes))
       (define (mode-match xid) (xid-lookup mode-infos xid))
-      (define (preferred-mode? mode-info) 
-        (define num-preferred (xref output-info 'num_preferred))
+      (define (preferred-mode? mode-info)
+        (define num-preferred (xref output-info 'num-preferred))
         (let get-preferred ((i 0))
           (cond
            ((= i num-preferred) #f)
@@ -296,20 +296,20 @@ to SetCrtcConfig"))
            (else (get-preferred (+ i 1))))))
       (define (print-modes mode-infos)
         (define info (car mode-infos))
-        (define (print-refresh info) 
+        (define (print-refresh info)
           (format #t " ~6,1f~a~a" (mode-refresh info)
                   (if (eq? info current-mode) "*" " ")
                   (if (preferred-mode? info) "+" " ")))
         (receive (infos rest) (partition (mode-res= info) mode-infos)
-          (format #t "   ~12a" 
+          (format #t "   ~12a"
                   (format #f "~ax~a" (xref info 'width) (xref info 'height)))
           (for-each print-refresh infos) (newline)
-          (if (not (null? rest)) (print-modes rest))))   
+          (if (not (null? rest)) (print-modes rest))))
       (format #t "~a\n"
-              (case (xref output-info 'connection) 
-                ((Connected) (format-connected-output-info output-info))
+              (case (xref output-info 'connection)
+                (() (format-connected-output-info output-info))
                 (else (format-disconnected-output-info output-info))))
-      (if (> (vector-length mode-xids) 0) 
+      (if (> (vector-length mode-xids) 0)
           (print-modes (map mode-match (vector->list mode-xids)))))
     (format #t "~a\n" (format-screen-info))
     (for-each print-output-info (map cdr output-infos)))
@@ -319,22 +319,22 @@ to SetCrtcConfig"))
       ((and=> (get-crtc-for-output output-info) proc) output-info))
     (and=> (get-output-info-by-name output-name) with-output))
 
-  (define (rotate output-name rotation) 
+  (define (rotate output-name rotation)
     (define ((do-it crtc-info) display-info)
       (xset! crtc-info 'rotation rotation)
       (mark-xid! (get-crtc-xid crtc-info)))
     (call-if-crtc-present output-name do-it))
 
-  (define (disable output-name) 
+  (define (disable output-name)
     (define ((do-it crtc-info) display-info)
-      (xset! crtc-info 'mode (xcb-none MODE))
+      (xset! crtc-info 'mode (xcb-none xmode))
       (xset! crtc-info 'outputs #())
       (mark-xid! (get-crtc-xid crtc-info)))
     (call-if-crtc-present output-name do-it))
 
   (define (offset output-name x y)
     (define ((do-it crtc-info) output-info)
-      (define crtc-xid (info-lookup crtc-infos crtc-info CRTC))
+      (define crtc-xid (info-lookup crtc-infos crtc-info xcrtc))
       (xset! crtc-info 'x x)
       (xset! crtc-info 'y y)
       (mark-xid! (get-crtc-xid crtc-info)))
@@ -342,16 +342,16 @@ to SetCrtcConfig"))
 
   (define (resolution output-name width height)
     (define ((do-it crtc-info) output-info)
-      (define output-xid (info-lookup output-infos output-info OUTPUT))
+      (define output-xid (info-lookup output-infos output-info xoutput))
       (define new-mode (get-mode-by-resolution width height output-info))
-      (xset! crtc-info 'mode (make-xid (xref new-mode 'id) MODE))
+      (xset! crtc-info 'mode (make-xid (xref new-mode 'id) xmode))
       (xset! crtc-info 'height (xref new-mode 'height))
       (xset! crtc-info 'width (xref new-mode 'width))
       (if (= (vector-length (xref crtc-info 'outputs)) 0)
           (xset! crtc-info 'outputs (vector output-xid)))
       (mark-xid! (get-crtc-xid crtc-info)))
     (call-if-crtc-present output-name do-it))
-  
+
   (define (process args)
     (define op
       (case (car args)

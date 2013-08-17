@@ -4,6 +4,7 @@
                           xcb-connection-setup
                           xcb-connection-has-extension?
                           xcb-connection-display
+                          current-xcb-connection
                           xcb-disconnect!
                           poll-xcb-connection))
   #:use-module ((xcb xml doc) #:select (document-full document-brief))
@@ -12,6 +13,9 @@
                 #:select (make-new-xid
                           xcb->string
                           out-of-xids
+                          xref
+                          xset!
+                          xref-string
                           enable-big-requests!
                           update-xid-range!
                           xcb-bytes->string
@@ -20,7 +24,6 @@
                           string->xcb2b
                           make-xid))
   #:use-module ((xcb xml union) #:select (xunion-ref))
-  #:use-module ((xcb xml struct) #:select (xref xset!))
   #:use-module ((xcb xml enum) #:select (xenum-or xenum-ref xenum-key-ref
                                                   xenum-keys xenum-values))
   #:use-module (xcb xml type)
@@ -46,12 +49,14 @@
                xcb-connect!
                xcb-disconnect!
                xcb-connected?
+               current-xcb-connection
                xcb-connection-display
                xcb-connection-has-extension?
                (typed-value-value . xid->integer)
                xunion-ref
                xcb-connection-setup
                xref
+               xref-string
                xset!
                make-new-xid))
 

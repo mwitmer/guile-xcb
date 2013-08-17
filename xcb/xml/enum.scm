@@ -39,3 +39,4 @@
 
 (define-public (xenum-or enum . keys)
   (apply logior (map (lambda (value) (xenum-ref enum value)) keys)))
+

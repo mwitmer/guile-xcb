@@ -27,6 +27,7 @@
   #:use-module (xcb xml type)
   #:use-module (xcb xml enum)
   #:use-module (xcb xml union)
+  #:use-module (xcb xml core)
   #:use-module ((xcb xml records) #:select (make-typed-value typed-value-value))
   #:use-module (xcb xml connection)
   #:use-module (xcb xml struct))
@@ -34,12 +35,12 @@
 (define (test-reader string)
   (xml->sxml string #:trim-whitespace? #t))
 
-(define-public (pack-xcb-struct-to-bytevector xcb-struct rec)
+(define-public (pack-xcb-struct-to-bytevector rec)
   (call-with-values
       (lambda ()
         (open-bytevector-output-port))
     (lambda (port get-bytevector)
-      (xcb-struct-pack xcb-struct rec port)
+      (xcb-struct-pack rec port)
       (get-bytevector))))
 
 (define in-extension? #f)
@@ -406,61 +407,61 @@
     (list->vector
      (fold-right
       (lambda (el prev)
-	(cons (make-CHAR2B
+	(cons (make-xchar2b
 	       (bytevector-u8-ref str-bv el)
 	       (bytevector-u8-ref str-bv (+ el 1))) prev))
       '() (iota (string-length str) 0 2)))))
 
 (test-begin "xcb-test")
 
-(let ((my-char2b (make-CHAR2B 20 10)))
+(let ((my-char2b (make-xchar2b 20 10)))
   (test-eqv (xref my-char2b 'byte1) 20)
   (test-eqv (xref my-char2b 'byte2) 10))
 
 (let* ((port (open-bytevector-input-port #vu8(10 20))))
   (let ((my-char2b
-         (xcb-struct-unpack CHAR2B port)))
+         (xcb-struct-unpack xchar2b port)))
     (test-eqv (xref my-char2b 'byte1) 10)
     (test-eqv (xref my-char2b 'byte2) 20)))
 
 (let* ((port (open-bytevector-input-port #vu8(1 2 0 0 0 0 0 3))))
   (let ((my-format
-         (xcb-struct-unpack FORMAT port)))
+         (xcb-struct-unpack xformat port)))
     (test-eqv (xref my-format 'depth) 1)
-    (test-eqv (xref my-format 'bits_per_pixel) 2)
-    (test-eqv (xref my-format 'scanline_pad) 3)))
+    (test-eqv (xref my-format 'bits-per-pixel) 2)
+    (test-eqv (xref my-format 'scanline-pad) 3)))
 
 (test-equal
- (pack-xcb-struct-to-bytevector FORMAT (make-FORMAT 3 4 5))
+ (pack-xcb-struct-to-bytevector (make-xformat 3 4 5))
  #vu8(3 4 0 0 0 0 0 5))
 
 (typecheck (make-typed-value
-	    (make-VISUALTYPE 3 'StaticColor 3 3 3 3 3)
-	    VISUALTYPE-type))
+	    (make-xvisualtype 3 'static-color 3 3 3 3 3)
+	    xvisualtype-type))
 
-(let ((my-visualtype (make-VISUALTYPE 3 'StaticColor 3 3 3 3 3)))
-  (test-eqv (xref my-visualtype 'bits_per_rgb_value) 'PseudoColor)
-  (xset! my-visualtype 'bits_per_rgb_value 'StaticColor)
-  (test-eqv (xref my-visualtype 'bits_per_rgb_value) 'StaticColor)
-  (xset! my-visualtype 'bits_per_rgb_value 8)
-  (test-eqv (xref my-visualtype 'bits_per_rgb_value) 8))
+(let ((my-visualtype (make-xvisualtype 3 'static-color 3 3 3 3 3)))
+  (test-eqv (xref my-visualtype 'bits-per-rgb-value) 'pseudo-color)
+  (xset! my-visualtype 'bits-per-rgb-value 'static-color)
+  (test-eqv (xref my-visualtype 'bits-per-rgb-value) 'static-color)
+  (xset! my-visualtype 'bits-per-rgb-value 8)
+  (test-eqv (xref my-visualtype 'bits-per-rgb-value) 8))
 
-(let ((my-visualtype (make-VISUALTYPE 3 'StaticColor 'PseudoColor 3 3 3 3)))
-  (test-eqv (xref my-visualtype 'bits_per_rgb_value) 'PseudoColor))
+(let ((my-visualtype (make-xvisualtype 3 'static-color 'pseudo-color 3 3 3 3)))
+  (test-eqv (xref my-visualtype 'bits-per-rgb-value) 'pseudo-color))
 
-(let ((my-depth (make-DEPTH 2 1 `#(,(make-VISUALTYPE 3 'PseudoColor 3 3 3 3 3)))))
+(let ((my-depth (make-xdepth 2 `#(,(make-xvisualtype 3 'pseudo-color 3 3 3 3 3)))))
   (test-equal
-   (pack-xcb-struct-to-bytevector DEPTH my-depth)
+   (pack-xcb-struct-to-bytevector my-depth)
    #vu8(2 0 1 0 0 0 0 0 3 0 0 0 3 3 3 0 3 0 0 0 3 0 0 0 3 0 0 0 0 0 0 0)))
 
 (let ((port
        (open-bytevector-input-port #vu8(1 2 3 4 5 6 7 8 9 0
                                           1 2 3 4 5 6 7 8 9 0))))
-  (let ((my-ClientMessageData
-         (xcb-union-unpack ClientMessageData port)))
-    (let ((data8-vec (xunion-ref my-ClientMessageData 'data8))
-	  (data16-vec (xunion-ref my-ClientMessageData 'data16))
-	  (data32-vec (xunion-ref my-ClientMessageData 'data32)))
+  (let ((my-client-message-data
+         (xcb-union-unpack client-message-data port)))
+    (let ((data8-vec (xunion-ref my-client-message-data 'data8))
+	  (data16-vec (xunion-ref my-client-message-data 'data16))
+	  (data32-vec (xunion-ref my-client-message-data 'data32)))
       (test-eqv (typed-value-value (vector-ref data8-vec 2)) 3)
       (test-eqv (typed-value-value (vector-ref data16-vec 2)) 1541)
       (test-eqv (typed-value-value (vector-ref data32-vec 2)) 33619977))))
@@ -470,49 +471,48 @@
 					  3 0 0 0 3 3 3 0
 					  3 0 0 0 3 0 0 0
 					  3 0 0 0 0 0 0 0))))
-  (let ((my-depth
-         (xcb-struct-unpack DEPTH port)))
+  (let ((my-depth (xcb-struct-unpack xdepth port)))
     (test-eqv (xref my-depth 'depth) 2)
     (let ((visual (xref my-depth 'visuals 0)))
-      (test-eqv (xref visual 'green_mask) 3)
-      (test-eqv (xref visual 'class) 'PseudoColor))))
+      (test-eqv (xref visual 'green-mask) 3)
+      (test-eqv (xref visual 'class) 'pseudo-color))))
 
-(let* ((my-maskstruct (make-MASKSTRUCT '(One Two)))
+(let* ((my-maskstruct (make-xmaskstruct '(one two)))
        (mask-list (xref my-maskstruct 'masked)))
-  (test-assert (memq 'One mask-list))
-  (test-assert (memq 'Two mask-list))
+  (test-assert (memq 'one mask-list))
+  (test-assert (memq 'two mask-list))
   (test-eqv (length mask-list) 2)
-  (xset! my-maskstruct 'masked '(Two Four))
+  (xset! my-maskstruct 'masked '(two four))
   (let ((new-mask-list (xref my-maskstruct 'masked)))
-    (test-assert (memq 'Two new-mask-list))
-    (test-assert (memq 'Four new-mask-list))
+    (test-assert (memq 'two new-mask-list))
+    (test-assert (memq 'four new-mask-list))
     (test-eqv (length new-mask-list) 2)))
 
-(let ((my-maskliststruct (make-MASKLISTSTRUCT 2 #(() ()))))
-  (xset! my-maskliststruct 'mask_list 0 '(Four Eight))
-  (let ((mask-list (xref my-maskliststruct 'mask_list)))
-    (test-assert (memq 'Four (vector-ref mask-list 0)))
-    (test-assert (memq 'Eight (vector-ref mask-list 0)))
+(let ((my-maskliststruct (make-xmaskliststruct #(() ()))))
+  (xset! my-maskliststruct 'mask-list 0 '(four eight))
+  (let ((mask-list (xref my-maskliststruct 'mask-list)))
+    (test-assert (memq 'four (vector-ref mask-list 0)))
+    (test-assert (memq 'eight (vector-ref mask-list 0)))
     (test-eqv (length (vector-ref mask-list 0)) 2))
-  (xset! my-maskliststruct 'mask_list 0 '(Eight))
-  (test-equal (xref my-maskliststruct 'mask_list 0) '(Eight)))
+  (xset! my-maskliststruct 'mask-list 0 '(eight))
+  (test-equal (xref my-maskliststruct 'mask-list 0) '(eight)))
 
-(let ((my-enumliststruct (make-ENUMLISTSTRUCT 1 #(One) 1 #(One))))
-  (xset! my-enumliststruct 'altenum_list 0 'Eight)
-  (test-eq (xref my-enumliststruct 'altenum_list 0) 'Eight)
-  (xset! my-enumliststruct 'altenum_list 0 64)
-  (test-eq (xref my-enumliststruct 'altenum_list 0) 64)
-  (xset! my-enumliststruct 'enum_list 0 'Four)
-  (test-eqv (xref my-enumliststruct 'enum_list 0) 'Four)
-  (test-error (xset! my-enumliststruct 'enum_list 0 8)))
+(let ((my-enumliststruct (make-xenumliststruct #(one) #(one))))
+  (xset! my-enumliststruct 'altenum-list 0 'eight)
+  (test-eq (xref my-enumliststruct 'altenum-list 0) 'eight)
+  (xset! my-enumliststruct 'altenum-list 0 64)
+  (test-eq (xref my-enumliststruct 'altenum-list 0) 64)
+  (xset! my-enumliststruct 'enum-list 0 'four)
+  (test-eqv (xref my-enumliststruct 'enum-list 0) 'four)
+  (test-error (xset! my-enumliststruct 'enum-list 0 8)))
 
 (receive (xcb-conn get-xcb-conn-result)
     (mock-connection #vu8() xcb-events xcb-errors)
-  (CreateWindow xcb-conn
+  (create-window/c xcb-conn
 		8
-		(mock-new-xid WINDOW #t)
-		(mock-new-xid WINDOW)
-		0 0 480 320 3 'InputOutput 12 CW `((BitGravity . 5)))
+		(mock-new-xid xwindow #t)
+		(mock-new-xid xwindow)
+		0 0 480 320 3 'input-output 12 #:bit-gravity 5)
   (test-equal (get-xcb-conn-result)
 	      #vu8(1 8 9 0 0 0 0 0
                      1 0 0 0 0 0 0 0
@@ -522,15 +522,15 @@
 
 (receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8()
                                                          xcb-events xcb-errors)
-  (SetSelectionOwner xcb-conn (mock-new-xid WINDOW #t) (mock-new-xid ATOM) 'CurrentTime)
+  (set-selection-owner/c xcb-conn (mock-new-xid xwindow #t) (mock-new-xid xatom) 'current-time)
   (test-equal (get-xcb-conn-result)
 	      #vu8(22 0 4 0 0 0 0 0
                       1 0 0 0 0 0 0 0)))
 
 (receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8()
                                                          xcb-events xcb-errors)
-  (let ((my-depth (make-DEPTH 2 1 `#(,(make-VISUALTYPE 3 'PseudoColor 3 3 3 3 3)))))
-    (TestStructPack xcb-conn my-depth 400)
+  (let ((my-depth (make-xdepth 2 `#(,(make-xvisualtype 3 'pseudo-color 3 3 3 3 3)))))
+    (test-struct-pack/c xcb-conn my-depth 400)
     (test-equal (get-xcb-conn-result)
 		#vu8(4 0 10 0 2 0 1 0
                        0 0 0 0 3 0 0 0
@@ -538,10 +538,10 @@
                        3 0 0 0 3 0 0 0
                        0 0 0 0 144 1 0 0))))
 
-(clone-xcb-struct DEPTH newDEPTH make-newDEPTH newDEPTH? newDEPTH-type)
-(let ((my-newDEPTH (make-newDEPTH 2 1 `#(,(make-VISUALTYPE 3 'StaticColor 3 3 3 3 3)))))
-  (xset! my-newDEPTH 'depth 4)
-  (test-eqv (xref my-newDEPTH 'depth) 4))
+(clone-xcb-struct xdepth new-depth make-new-depth new-depth? new-depth-type)
+(let ((my-new-depth (make-new-depth 2 `#(,(make-xvisualtype 3 'static-color 3 3 3 3 3)))))
+  (xset! my-new-depth 'depth 4)
+  (test-eqv (xref my-new-depth 'depth) 4))
 
 (define (poll-first xcb-conn)
   (receive (key val)
@@ -557,7 +557,7 @@
             0 0 0 0 0 0 0 0)
      xcb-events xcb-errors)
   (let ((my-event (poll-first xcb-conn)))
-    (test-eq (KeyPress-event? my-event) #t)
+    (test-eq (key-press-event? my-event) #t)
     (test-eqv (xref my-event 'detail) 2)))
 
 (receive (xcb-conn get-xcb-conn-result)
@@ -570,8 +570,8 @@
      xcb-events xcb-errors)
   (let ((my-event (poll-first xcb-conn)))
     (test-eqv (xref my-event 'detail) 2)
-    (test-eqv (xref my-event 'sequence_number) 2)
-    (test-eq (KeyRelease-event? my-event) #t)))
+    (test-eqv (xref my-event 'sequence-number) 2)
+    (test-eq (key-release-event? my-event) #t)))
 
 (receive (xcb-conn get-xcb-conn-result)
     (mock-connection
@@ -589,7 +589,7 @@
     (test-eqv (typed-value-value (vector-ref data8-vec 2)) 3)
     (test-eqv (typed-value-value (vector-ref data16-vec 2)) 1541)
     (test-eqv (typed-value-value (vector-ref data32-vec 2)) 33619977)
-    (test-eq (ClientMessageTest-event? my-event) #t)))
+    (test-eq (client-message-test-event? my-event) #t)))
 
 (receive (xcb-conn get-xcb-conn-result)
     (mock-connection
@@ -605,20 +605,20 @@
      xcb-events xcb-errors)
   (let ((my-error (poll-first xcb-conn))
 	(my-event (poll-first xcb-conn)))
-    (test-eqv (xref my-error 'bad_value) 10)
+    (test-eqv (xref my-error 'bad-value) 10)
     (test-eqv (xref my-event 'detail) 2)
-    (test-eqv (xref my-event 'sequence_number) 2)
-    (test-eq (KeyRelease-event? my-event) #t)))
+    (test-eqv (xref my-event 'sequence-number) 2)
+    (test-eq (key-release-event? my-event) #t)))
 
 (receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8()
                                                          xcb-events xcb-errors)
-  (QueryTextExtents xcb-conn (mock-new-xid FONT #t) (string->xcb-char2b-vector "12345"))
+  (query-text-extents/c xcb-conn (mock-new-xid xfont #t) (string->xcb-char2b-vector "12345"))
   (test-equal (get-xcb-conn-result)
 	      #vu8(48 1 5 0 0 0 0 0 49 0 50 0 51 0 52 0 53 0 0 0)))
 
 (receive (xcb-conn get-xcb-conn-result) (mock-connection #vu8()
                                                          xcb-events xcb-errors)
-  (QueryTextExtents xcb-conn (mock-new-xid FONT #t) (string->xcb-char2b-vector "123456"))
+  (query-text-extents/c xcb-conn (mock-new-xid xfont #t) (string->xcb-char2b-vector "123456"))
   (test-equal (get-xcb-conn-result)
 	      #vu8(48 0 5 0 0 0 0 0 49 0 50 0 51 0 52 0 53 0 54 0)))
 

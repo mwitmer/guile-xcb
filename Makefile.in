@@ -304,11 +304,11 @@ nobase_go_DATA = \
   language/xml-xcb/spec.go           \
   xcb/event-loop.go                  \
   xcb/xml/xproto.go                  \
+  xcb/xml/core.go                    \
   xcb/xml/ext-support.go             \
   xcb/xml/ext/bigreq.go              \
   xcb/xml/ext/ge.go                  \
   xcb/xml/ext/xc_misc.go             \
-  xcb/xml/core.go                    \
   xcb/xml/auth.go                    \
   xcb/xml.go                         \
   xcb/xml/ext/render.go              \

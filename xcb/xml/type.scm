@@ -43,8 +43,7 @@
 
 (define (typed-value-pack value port) 
   ((xcb-type-pack (typed-value-type value))
-   port
-   (typed-value-value value)))
+   port (typed-value-value value)))
 
 (define-public (typed-value-value-or-enum typed-val)
   (define value (typed-value-value typed-val))
@@ -59,8 +58,7 @@
    (else value)))
 
 (define (typed-value-unpack type port)
-  (define result ((xcb-type-unpack type)
-    port))
+  (define result ((xcb-type-unpack type) port))
   result)
 
 (define (unsigned-bit-length-predicate bits)
