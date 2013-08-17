@@ -1,0 +1,28 @@
+2013-08-17 Mark Witmer <mark@markwitmer.com>
+
+	* Version 1.0 released: Here are the highlights; see the git log for details
+
+	* Asynchronous event loop: The inadequate loop based on promises
+	was replaced with a more robust one based on delimited continuations
+
+	* Syntax overhaul: symbols exported by the compiled XML files are
+	now in the standard Scheme format (lowercase, dash-separated).
+
+	* Transparent string handling: Clients can pass in/read out
+	strings from X requests and replies without having to manually
+	convert them to/from XCB types.
+
+	* Optional keyword arguments: X request procedures that have
+	valueparam arguments specify them with familiar keyword arguments
+	and do not need to specify which enum to use for the value name
+	list
+
+	* Thread-safe Connections (Partially): Multiple threads can now
+	send requests on the same XCB connection without causing race
+	conditions. Each reply, event, and error will still be consumed by
+	the first thread that polls for it, however.
+
+	* send-event made easy: Added xcb-event->vector to easily convert
+	events to the right format for send-event requests
+
+	* Bug fixes, updates test cases, updated manual, and more.
