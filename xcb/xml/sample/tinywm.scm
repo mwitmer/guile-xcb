@@ -75,7 +75,7 @@
     (ungrab-pointer xcb-current-time))
 
   (define (on-window-click window button-press)
-    (configure-window window #:stack-mode (xenum-ref stack-mode 'above))
+    (configure-window window #:stack-mode 'above)
     (with-replies ((geom get-geometry window))
       (cond
        ((= (xref button-press 'detail) 1)
@@ -96,7 +96,7 @@
   (define (on-key-press key-press)
     (cond
      ((and (win) (= (xref key-press 'detail) 67))
-      (configure-window (win) #:stack-mode (xenum-ref stack-mode 'below)))
+      (configure-window (win) #:stack-mode 'below))
      ((= (xref key-press 'detail) 24) (xcb-disconnect! xcb-conn))))
 
   (listen! motion-notify-event 'mn on-motion-notify)

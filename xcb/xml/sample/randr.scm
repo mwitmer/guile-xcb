@@ -108,7 +108,7 @@
   ;; Basic X connection stuff
 
   (define setup (xcb-connection-setup xconn))
-  (define enable-randr (solicit (xcb-enable-randr! xconn)))
+  (define enable-randr (solicit (delay-enable-extension 'randr)))
   (define randr-version (reply-for query-version 1 4))
   (define screen (xref setup 'roots 0))
   (define root (xref screen 'root))
