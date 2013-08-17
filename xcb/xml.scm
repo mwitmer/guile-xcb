@@ -4,6 +4,7 @@
                           xcb-connection-setup
                           xcb-connection-has-extension?
                           xcb-connection-display
+                          set-on-xid-range-exhausted!
                           current-xcb-connection
                           xcb-disconnect!
                           poll-xcb-connection))
@@ -11,17 +12,12 @@
   #:use-module ((xcb xml auth) #:select (xcb-connect!))
   #:use-module ((xcb xml core)
                 #:select (make-new-xid
-                          xcb->string
-                          out-of-xids
                           xref
                           xset!
                           xref-string
                           enable-big-requests!
                           update-xid-range!
-                          xcb-bytes->string
                           xcb-event->vector
-                          string->xcb
-                          string->xcb2b
                           make-xid))
   #:use-module ((xcb xml union) #:select (xunion-ref))
   #:use-module ((xcb xml enum) #:select (xenum-or xenum-ref xenum-key-ref
@@ -30,9 +26,6 @@
   #:use-module ((xcb xml records) #:select (make-typed-value typed-value-value))
   #:re-export (make-xid
                poll-xcb-connection
-               string->xcb
-               string->xcb2b
-               xcb->string
                xcb-event->vector
                xid=
                xenum-ref
@@ -40,11 +33,10 @@
                xenum-or
                xenum-keys
                xenum-values
-               xcb-bytes->string
-               out-of-xids
                enable-big-requests!
                update-xid-range!
                document-full
+               set-on-xid-range-exhausted!
                document-brief
                xcb-connect!
                xcb-disconnect!

@@ -78,8 +78,6 @@
 	       (bytevector-u8-ref str-bv el)) prev))
       '() (iota (string-length str) 0 2)))))
 
-(define-public out-of-xids (make-prompt-tag "out-of-xids"))
-
 (define-public (next-xid-value xcb-conn)
   (let* ((setup (xcb-connection-setup xcb-conn))
          (base (xref setup 'resource-id-base))
@@ -88,7 +86,9 @@
          (last-xid (xcb-connection-last-xid xcb-conn))
          (current-xid
           (if (> (+ last-xid inc) mask)
-              (abort-to-prompt out-of-xids xcb-conn)
+              (update-xid-range!
+               xcb-conn
+               ((on-xid-range-exhausted xcb-conn) xcb-conn))
               (+ last-xid inc))))
     (set-xcb-connection-last-xid! xcb-conn current-xid)
     (logior current-xid base)))
@@ -103,13 +103,28 @@
 (define-public (make-xid val xcb-type)
   (make-typed-value val xcb-type))
 
-(define-public (xcb-event->vector xcb-conn event)
+(define (xcb-event->vector/c xcb-conn event)
   (define rtd (record-type-descriptor event))
   (define event-type ((record-accessor rtd 'xcb-struct-type) event))
   (define raw (xcb-struct-pack-to-bytevector event))
   (define ev
-   (cons (number-for-event xcb-conn event-type) (bytevector->u8-list raw)))
+   (cons (number-for-event (current-xcb-connection) event-type)
+         (bytevector->u8-list raw)))
   (list->vector (map integer->char ev)))
+
+(define-public xcb-event->vector
+  (case-lambda
+    ((xcb-conn event) (xcb-event->vector/c xcb-conn event))
+    ((event) (xcb-event->vector/c (current-xcb-connection) event))))
+
+(define-public enable-big-requests!
+  (case-lambda
+    ((xcb-conn enable-reply)
+     (set-maximum-request-length!
+      xcb-conn (xref enable-reply 'maximum-request-length)))
+    ((enable-reply)
+     (set-maximum-request-length!
+      (current-xcb-connection) (xref enable-reply 'maximum-request-length)))))
 
 (define (update-xid-range! xcb-conn range)
   (let* ((xid-count (xref range 'count))
@@ -122,11 +137,6 @@
     (set-xcb-connection-last-xid! xcb-conn xid-start)
     (xset! setup 'resource-id-mask! (* (+ xid-start (- xid-count 1)) inc))
     xid-start))
-
-(define-public (enable-big-requests! xcb-conn enable)
-  (set-maximum-request-length!
-   xcb-conn (xref enable 'maximum-request-length)))
-
 
 (define (xcb-convert-to-string val type)
   (if (xcb-type-list? type)

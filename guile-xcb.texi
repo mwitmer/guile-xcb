@@ -93,10 +93,10 @@ Window System} is a feature of many unix-like operating systems that
 provides a mechanism for creating and interacting with graphical user
 interfaces.
 
-X is designed with a client-server architecture, in which an X server
-listens for input from peripherals like the mouse and keyboard, and
-draws graphical elements in windows on the screen. Client applications
-can connect to the X server and send requests to query and modify
+X uses a client-server architecture, in which an X server listens for
+input from peripherals like the mouse and keyboard, and draws
+graphical elements in windows on the screen. Client applications can
+connect to the X server and send requests to query and modify
 information about the windows managed by the server. They may also
 select user input events and ask to be notified when they occur.
 
@@ -106,9 +106,8 @@ packets. These include the following:
 
 @itemize @minus
 @item
-Request: A message sent from the client to the server, either with the
-purpose of manipulating data on the server side, or to query
-information already present.
+Request: A message sent from the client to the server with the purpose
+of manipulating or querying data and devices managed by the server.
 
 @item
 Reply: A message sent from the server to the client that contains the
@@ -183,8 +182,9 @@ are each represented by a Guile module.
 
 The core X protocol is defined in module @code{(xcb xml
 xproto)}. Support functions for interacting with the X server are
-found in @code{(xcb xml)}, and functions for running an event loop are
-in @code{(xcb event-loop)}. @xref{The Event Loop}.
+found in @code{(xcb xml)}. @code{(xcb event-loop)} is an optional
+module with procedures and syntax for running an event loop. @xref{The
+Event Loop}.
 
 Extensions to the X protocol are found in modules named using the
 format @code{(xcb xml ext @var{extension-name})}. @xref{Using
@@ -224,7 +224,7 @@ with C structures.
 Guile XCB defines objects that behave similarly to C structures, and
 provides the means for accessing and modifying their values.  For
 example, when the following XML from xproto.xml is compiled, the new
-module will contain a variable named @code{SetupFailed}:
+module will contain a variable named @code{setup-failed}
 
 @example
 
@@ -241,19 +241,27 @@ module will contain a variable named @code{SetupFailed}:
 
 @end example
 
-@code{SetupFailed} is a Scheme object the keeps track of information
+It is important to note that Guile XCB normalizes symbols from the xml
+files to the lowercase, dash-separated format typical in Scheme source
+code. Additionally, symbols that were originally in all-caps are
+prefixed with the letter x in order to avoid naming collisionss. For
+example, the symbol @code{GC} used in xproto.xml is replaced by
+@code{xgc} in Guile XCB, @code{CHAR2B} becomes @code{xchar2b}, and so
+forth. The underscores found in XCB struct field names are replaced
+with dashes.
+
+In a module compiled from the XML definition above,
+@code{setup-failed} is a Scheme object the keeps track of information
 about SetupFailed structures received from the X server, including
 their fields and how they are read and written. An instance of
-@code{SetupFailed} can be created with the procedure
-@code{make-SetupFailed}, which takes as arguments values for each of
-the fields described above. The last field, a list with name
-@code{reason}, is represented as a vector. @footnote{Unfortunately,
-because of XCB's C orientation, it is necessary to provide a value for
-@samp{reason_len} even though the length of the vector given for
-@samp{reason} is already evident.}
+@code{setup-failed} can be created with the procedure
+@code{make-setup-failed}, which takes as arguments values for each of
+the fields described above, excluding ``reason_len'' @footnote{Values
+for a field that ends in ``_len'' are computed internally}. The last field,
+a list with name @code{reason}, is represented as a vector.
 
-@deffn {Scheme Procedure} make-SetupFailed status reason_len protocol_major_version protocol_minor_version length reason
-Create an xcb struct of type SetupFailed
+@deffn {Scheme Procedure} make-setup-failed status protocol_major_version protocol_minor_version length reason
+Create an xcb struct of type @code{setup-failed}.
 @end deffn
 
 Fields of an xcb structure instance can be accessed using the
@@ -274,6 +282,18 @@ second form, set the @var{n}th element of list field @var{field} in
 @var{rec} to @var{val}.
 @end deffn
 
+Some fields of an XCB struct contain vectors of characters or
+double-width characters. Guile XCB will transparently convert these
+values to Scheme strings if they are referenced using the procedure
+@code{xref-string}.
+
+@deffn {Scheme Procedure} xref-string rec field | rec field n
+Returns the same value as xref, unless the field's type is char[],
+xchar2b[], xbyte[], or void[], in which case it will return the value
+converted to a Scheme string. The second form of this procedure is
+identical to @code{xref}.
+@end deffn
+
 Guile XCB will check to ensure that each value conforms to its type
 before sending the record to the X server and will cause an error if
 any do not. @xref{Types}. Some fields require that a value belong to a
@@ -292,13 +312,13 @@ XML files specify a type for each field in every xcb structure.
 Guile XCB associates each type with a predicate to test if a value
 belongs to the type, procedures for reading and writing values to/from
 a binary port, and optionally an enum or mask containing a list of
-possible values. @xref{Enums and Masks}. Some types are opaque to the
-user, meaning that the values they contain are only of practical use
-for the server and should remain ``boxed'' when handled by a client.
+possible values. @xref{Enums and Masks}.
 
-To see what types are required in a structure, evalate the name of
-the structure at the REPL and the record type printer will display its
-field names and types.
+To see what types are required in a structure, evalate the name of the
+structure at the REPL and the record type printer will display its
+field names and types. If the type is followed by an empty pair of
+brackets (such as @code{xchar2b[]}), the value must be a vector of
+values that satisfy the type.
 
 @menu
 * Core Types::
@@ -345,7 +365,7 @@ renaming core types in various ways. These include the following:
 typedef: This is a simple alias for a type. The newly defined type has
 all of the same properties as the original.
 @item
-xidtype: These are 4-byte opaque types representing handles to objects
+xidtype: These are 4-byte integers representing handles to objects
 managed by the X server. XIDs are created with the procedure
 @code{make-new-xid}. @xref{XIDs}.
 @item
@@ -367,16 +387,16 @@ conforming to the specification of @var{field}.
 @node Enums and Masks
 @section Enums and Masks
 
-Some fields also have an additional property that affects the type of
+Some fields have an additional property that affects the type of
 values they contain. These are @samp{enum}, @samp{mask}, and
 @samp{altenum}.
 
 For @samp{enum} fields, rather than providing a number, the user
 should provide the symbol that is the name of a value in the specified
 enum.  For example, if a field is limited to the enum
-@code{BackingStore}, the user must provide one of the following
-symbols as a value: @code{NotUseful}, @code{WhenMapped}, or
-@code{Always}. Guile XCB will not accept integer values for this
+@code{backing-store}, the user must provide one of the following
+symbols as a value: @code{not-useful}, @code{when-mapped}, or
+@code{always}. Guile XCB will not accept integer values for this
 value.
 
 @samp{mask} fields use a list of symbols, each one representing a
@@ -423,13 +443,12 @@ Return a list of all the values in the enum.
 Using the previously described structures as a basis, Guile XCB
 provides a simple interface for sending requests to the X server and
 receiving replies, errors, and events. Procedures for interacting
-with an X server are exported from the module (xcb xml).
+with an X server are exported from the module @code{(xcb xml)}.
 
 @menu
 * Connecting::         Connecting to the X Server
 * Sending Requests::   Putting the X Server to work
-* Replies and Errors::  Getting data back from the X Server
-* Events::  Dealing with input from the outside
+* Replies, Events, and Errors: Replies.            Getting data back from the X Server
 * Using Extensions::   Going beyond the core X protocol
 
 @end menu
@@ -452,13 +471,17 @@ When an X server is running, the variable @var{DISPLAY} with the
 needed string as its value should be defined in the shell enivronment,
 and that value is used by default.
 
+It is safe to use an xcb connection in multiple threads; each
+connection has a mutex that blocks other threads from sending or
+receiving data from the X server while one thread is doing so.
+
 @deffn {Scheme Procedure} xcb-disconnect! xcb-conn
 Close the connection to the X server represented by @var{xcb-conn}
 @end deffn
 
 @deffn {Scheme Procedure} xcb-connected? xcb-conn
 Returns @code{#t} if the xcb-connection has successfully connected to an X
-server and contains a Setup value, otherwise returns @code{#f}
+server and contains a setup value, otherwise returns @code{#f}
 @end deffn
 
 @deffn {Scheme Procedure} xcb-connection-setup xcb-conn
@@ -466,7 +489,7 @@ If @var{xcb-conn} is connected, returns the setup information provided
 by the X server. Returns @code{#f} otherwise.
 @end deffn
 
-The setup information is stored in a struct of type @samp{Setup},
+The setup information is stored in a struct of type @samp{setup},
 which is defined in the core X protocol XML file, xproto.xml.
 
 @deffn {Scheme Procedure} xcb-connection-display xcb-conn
@@ -476,11 +499,11 @@ Returns the display string used to connect @var{xcb-conn}.
 @node Sending Requests
 @section Sending Requests
 
-Each request defined in the X protocol and its available extensions
-is represented by a Scheme procedure of the same name, with arguments
-corresponding to the required fields. Some requests also include
-optional fields. Their presence is determined by the value of one or
-more other fields in the request.
+Each request defined in the X protocol and its available extensions is
+represented by a Scheme procedure of the same name, with arguments
+corresponding to the fields of the X request. Another Scheme procedure
+with the suffix ``/c'' is also available which takes an XCB connection
+as its first argument. Some requests include optional fields.
 
 @menu
 * A Simple Request Example::
@@ -497,15 +520,41 @@ more other fields in the request.
 Perhaps sending requests to the X server is best illustrated with an
 example from the core X protocol:
 
-@deffn {Scheme Procedure} QueryExtension xcb-conn name_len name
-Send a QueryExtension request to the X server connected to
-@var{xcb-conn} with fields @var{name_len} and @var{name}. Returns
-the sequence number of the request.
+@deffn {Scheme Procedure} query-extension name
+Send a QueryExtension request to the X server connected to the current
+xcb connection, with the value @var{name}. Returns the sequence number
+of the request.
 @end deffn
 
-Sending a request to the server does not immediately result in a
-reply. The user must poll the xcb connection for data until the
-reply becomes available. @xref{Replies and Errors}.
+By default, X requests are sent using the parameter
+@code{current-xcb-connection}. The value of this parameter must be set
+to an open XCB connection.
+
+@deffn {Scheme Procedure} current-xcb-connection [xcb-conn]
+Sets the value of the @code{current-xcb-connection} parameter to
+@var{xcb-conn}, if is provided. Otherwise, returns the value of the
+@code{current-xcb-connection} parameter.
+@end deffn
+
+The rationale for using a dynamically-scoped parameter is that most
+applications will only use one X connection (possibly one per thread),
+and requiring every X request to refer to the X connection is
+unnecessarily redundant.
+
+An alternative form of each X request, with the suffix ``/c'', is
+available, allowing the user to specify the X connection directly:
+
+@deffn {Scheme Procedure} query-extension/c xcb-conn name
+Send a QueryExtension request to the X server connected to
+@code{xcb-conn} for the extension named @var{name}. Returns the
+sequence number of the request.
+@end deffn
+
+Guile XCB does not queue requests; they are sent to the X server as
+soon as they are ready. However, sending a request to the server does
+not immediately result in a reply. In cases where a request has an
+associated reply, the user must poll the xcb connection for data until
+the reply becomes available. @xref{Replies}.
 
 @node Valueparams
 @subsection Valueparams
@@ -520,37 +569,37 @@ enum using @code{|} in order to generate the value mask, and then
 create a list of values in the correct order to match the bits in the
 mask.
 
-The Guile XCB approach is less complicated; in place of a value param,
-the first argument is the name of the XCB enum that the value mask
-corresponds to. The second argument is an associative list. The car of
-each pair is the name of a value in the enum, and the cdr is the value
-that goes with it. Guile XCB will create the value mask and value
-param based on these arguments and ensure that the values are in the
-correct order. @footnote{Guile XCB's valueparams do have one drawback:
-only one valueparam is permitted per request, and none are permitted in
-replies. This limitation eliminates support for the XPRINT extension,
-which is deprecated and shouldn't be used anyway. Future versions of
-Guile XCB may remove this restriction.}
+The Guile XCB approach is less complicated. XCB defines an enum for
+each value mask that gives names to all the possible arguments, and
+Guile XCB uses these names to form a set of keyword arguments that can
+be passed when creating a request.
 
 The following example demonstrates the use of a valueparam to set a
 window's location:
 
 @lisp
-(ConfigureWindow xcb-conn window
-  ConfigWindow
-  `((X . 100)
-    (Y . 100)))
+(configure-window window #:x 100 #:y 100)
 @end lisp
 
-In this example, @code{ConfigWindow} is the name of the enum used in
-the value mask, and @code{X} and @code{Y} are the values included in
-the request.
+In this example, the possible keyword arguments are defined in the
+enum @code{config-window}. @code{#:x} and @code{#:y} are the values
+included in this particular request.
 
 All values in a valueparam have the same type (usually CARD32) whether
-they are restricted to a certain enum or not. This makes it
-impractical for Guile XCB to translate enum keys into numeric values
-automatically as it normally would. Instead, a program should convert
-the values manaully using @code{xenum-ref} and @code{xenum-or}.
+or not they are logically restricted to a certain type or
+enum. However, Guile XCB will automatically convert XIDs to integers,
+@code{#t} and @code{#f} to the values 0 and 1, and symbols or lists of
+symbols to numeric values from the appropriate enum. Usually the enum
+will have the same name as the valueparam field (eg. a symbol provided
+as an @code{#:event-mask} argument will be replaced with the
+corresponding number in the @code{event-mask} enum).
+
+In some cases, such as the @code{#:bit-gravity} field in
+@code{change-window-attributes} (which should be associated with the
+@code{gravity} enum), the valueparam field has a different name than
+the enum associated with it. Guile XCB will still ``do the right
+thing'' if it receives a symbol or symbol list as the value for that
+field.
 
 @node Switches
 @subsection Switches
@@ -572,14 +621,14 @@ The following example demonstrates the use of a switch in an XKEYBOARD
 request:
 
 @lisp
-(SelectEvents conn 12
-                '(NewKeyboardNotify)
-                '(StateNotify)
-                '(StateNotify)
-                '(KeyActions)
-                '(KeyActions)
-                '((affectNewKeyboard . (Keycodes))
-                  (newKeyboardDetails . (Geometry))))
+(select-events 12
+               '(new-keyboard-notify)
+               '(state-notify)
+               '(state-notify)
+               '(key-actions)
+               '(key-actions)
+               '((affect-new-keyboard . (keycodes))
+                 (new-keyboard-details . (geometry))))
 @end lisp
 
 At present, XKEYBOARD is the only extension which uses switches.
@@ -592,13 +641,21 @@ resources. These resources are referred to with unique identifiers
 called ``XIDs.'' The client must create the new XIDs that it sends to
 the server.
 
-@deffn {Scheme Procedure} make-new-xid xcb-conn xcb-type
+@deffn {Scheme Procedure} make-new-xid [xcb-conn] xcb-type
 Generate a new unique identifier for referring to a resource
-maintained by the X server connected to @var{xcb-conn}. X requests
-that instruct the server to create, for example, new Windows or
-Graphical Contexts require an XID for the new resource. @var{xcb-type}
-is an xid type such as @code{WINDOW} or @code{GC}.
+maintained by the X server connected to @var{xcb-conn} (or
+@code{current-xcb-connection}, if it is ommitted). X requests that
+instruct the server to create, for example, new Windows or Graphical
+Contexts require an XID for the new resource. @var{xcb-type} is an xid
+type such as @code{xwindow} or @code{xgc}.
 @end deffn
+
+From the point of view of the X server, XIDs are simply 4-byte
+integers. When an XID value is created or pulled from an XCB struct
+using @code{xref}, it will be associated with its type information (a
+name such as xwindow, xfont, xcursor, etc.). This is meant to assist
+the user in keeping track of what sort of X resource is associated
+with a particular XID number.
 
 Sometimes, due to ommissions in the XCB-XML files, replies from the X
 server will store an XID's integer value without the annotation that
@@ -624,16 +681,15 @@ Returns @code{#t} if the integer value and type of @var{xid1} and
 @end deffn
 
 Applications that require more XIDs than are initially available may
-enable and use the XC_MISC X extension when available. @xref{X
-Extensions Used by Guile XCB}.
+enable and use the XC_MISC X extension, if it supported by the X
+server. @xref{X Extensions Used by Guile XCB}.
 
 @node Predefined Values and Helpers
 @subsection Predefined Values and Helpers
 
 Because the X protocol is a binary protocol and everything must be
-expressed numerically, managing complex values and even strings can be
-unwieldy. Guile XCB provides a few procedures and values to simply
-these tasks.
+expressed numerically, managing complex values can be unwieldy. Guile
+XCB provides a few procedures and values to simply these tasks.
 
 @deffn {Scheme Variable} xcb-current-time
 Alias for the value zero to use in fields that describe X timestamps;
@@ -646,55 +702,40 @@ fields of X requests that accept ``none'' as an option instead of a
 defined XID.
 @end deffn
 
-@deffn {Scheme Procedure} string->xcb str
-Convert a Latin-1 string into a vector of xcb chars.
-@end deffn
-
-@deffn {Scheme Procedure} xcb->string
-Convert a vector of xcb chars into a Latin-1 string.
-@end deffn
-
-@deffn {Scheme Procedure} xcb-bytes->string
-Convert a vector of xcb bytes into a Latin-1 string.
-@end deffn
-
-@deffn {Scheme Procedure} string->xcb2b
-Convert a string of C widechars into a vector of xcb double-width
-chars.
-@end deffn
-
-@deffn {Scheme Procedure} xcb-event->vector xcb-conn event
+@deffn {Scheme Procedure} xcb-event->vector [xcb-conn] event
 
 Convert @var{event} into a character vector for use in sending a
-@code{SendEvent} request on connection @var{xcb-conn}.
+@code{send-event} request on connection @var{xcb-conn} (or
+@code{current-xcb-connection} if it is ommitted).
 
 @end deffn
 
-@node Replies and Errors
-@section Replies and Errors
+@node Replies
+@section Replies, Events, and Errors
 
 Many X requests elicit replies from the X server. Because the X
 protocol is asynchronous, the client must check its connection with
-the server periodically to see if any replies, errors, or events
+the server periodically to see if any replies, events, or errors
 have arrived.
 
 @deffn {Scheme Procedure} poll-xcb-connection xcb-conn [async?=@code{#f}]
-Receive the next reply, error, or event from the X server connected to
+Receive the next reply, event, or error from the X server connected to
 @var{xcb-conn}. If @var{async?} is @code{#t}, the procedure will
-return the values @code{'none} and @code{#f} if no data is immediately
+return the values @code{none} and @code{#f} if no data is immediately
 available. Otherwise the procedure will block for a response.
 
-This procedure returns two values---the first is a symbol
-(@code{reply}, @code{error}, or @code{event}) indicating the type of
-structure received from the server. The second value is a vector
-containing the data received from the server. The vector can be
-referenced directly or through the procedures @code{xcb-struct},
-@code{xcb-data}, and @code{xcb-sequence-number}.
+When this procedure does receive data from the X server, it returns
+two values---the first is a symbol (@code{reply}, @code{error}, or
+@code{event}) indicating what kind of data was received from the
+server. The second value is a vector containing the data received from
+the server. The vector can be referenced directly or through the
+procedures @code{xcb-struct}, @code{xcb-data}, and
+@code{xcb-sequence-number}.
 @end deffn
 
 @deffn {Scheme Procedure} xcb-struct data
-Returns the XCB struct (i.e. @code{KeyPress-event},
-@code{QueryExtension-reply}, etc.) type for a piece of data sent by
+Returns the XCB struct (i.e. @code{key-press-event},
+@code{query-extension-reply}, etc.) for a piece of data sent by
 the X server.
 @end deffn
 
@@ -710,32 +751,25 @@ sequence number, it is included as one of the fields of the XCB struct
 itself.
 @end deffn
 
-A reply from the X server is another xcb struct, this time with a name
-in the form @code{@var{request-name}-reply}, such as
-@code{QueryExtension-reply} or @code{GetWindowAttributes-reply}.
+A reply from the X server uses an xcb struct with a name in the form
+@code{@var{request-name}-reply}, such as @code{query-extension-reply}
+or @code{get-window-attributes-reply}.
 
 When something goes wrong while the X server processes a request,
 either because of faulty data provided by the client or an internal
 error, the X server may send an error message in place of a reply.
 Errors have names in the form @code{@var{error-name}-error}, such as
-@code{Alloc-error} and @code{Value-error}.
+@code{alloc-error} and @code{value-error}.
 
-Calling an X request function returns a sequence number, which can be
-stored and matched to the @code{xcb-sequence-number} field of a
-subsequent call to @code{poll-xcb-connection}.
+Events have names in the form @code{@var{event-name}-event}, such as
+@code{key-press-event} or @code{focus-in-event}.
+
+The @code{xcb-sequence-number} field of a call to
+@code{poll-xcb-connection} can be matched to the sequence number
+returned by a previous X request function.
 
 Using @code{poll-xcb-connection} directly can be
 cumbersome. @pxref{The Event Loop} for a more convenient abstraction.
-
-@node Events
-@section Events
-
-Like replies and errors, events from the X server are received as a
-result of calls to @code{poll-xcb-connection}. They are represented
-with XCB structures just like requests, replies, and errors. Their
-names are in the form @code{@var{event-name}-event}, such as
-@code{KeyPress-event} or @code{FocusIn-event}. @pxref{The Event Loop}
-for an asynchronous means of handling events.
 
 @node Using Extensions
 @section Using Extensions
@@ -758,32 +792,32 @@ If the X server includes an extension to the core protocol, the client
 may make use of it by calling a procedure defined in the extension's
 module.
 
-@deffn{Scheme Procedures} xcb-enable-@var{extension-name}! xcb-conn [proc=@code{#f}]
+@deffn{Scheme Procedures} xcb-enable-@var{extension-name}! reply
 
-Lazily enable the X extension with name @var{extension-name} for the X
-connection connected to @var{xcb-conn}. If @var{proc} is a
-procedure, call @var{proc} with the QueryExtension reply once it has
-been received.
+Based on @var{reply}---an instance of
+@code{query-extension-reply}---enable the X extension with name
+@var{extension-name} for @code{current-xcb-connection}.
 
-Returns an xcb tag as used by the optional event loop library, which
-when solicited, returns @code{#t} or the result of @var{proc} (when
-provided) if the extension is available, and @code{#f}
-otherwise. @xref{Solicit and Notify}.
+Returns @code{#t} if the extension was successfully enabled, and
+@code{#f} otherwise.
 
 Extension names correspond to the value of the @code{header} attribute
 in the root node of an X protocol XML file. Specific procedures of
 this type are named @code{xcb-enable-bigreq!},
-@code{xcb-enable-xc_misc!}, and so on.
+@code{xcb-enable-xc_misc!}, and so on. Note that extension names are
+not normalized to the standard Scheme variable name format.
+@end deffn
+
+@deffn{Scheme Procedure} xcb-enable-@var{extension-name}!/c xcb-conn reply
+Same as the procedure described above, but @var{xcb-conn} must also be provided.
 @end deffn
 
 A client can check to see if extensions have been enabled for a given
-xcb connection.
+xcb connection:
 
 @deffn {Scheme Procedure} xcb-connection-has-extension? xcb-conn ext-name
-Return @code{#t} if an op code has been received from the X server
-connected to @var{xcb-conn} for extension with name
-@var{ext-name}. @var{ext-name} should be a symbol corresponding to the
-value of the @code{header} attribute in the extension's XML file.
+Return @code{#t} if extension @var{ext-name} is enabled on connection
+@var{xcb-conn}.
 @end deffn
 
 Note that Guile XCB does not perform any version negotiation with the
@@ -791,10 +825,26 @@ server; enabling an extension simply provides the xcb connection with
 the opcode, first event number, and first error number necessary for
 further interaction with the extension.
 
+The name for an extension that should be passed to the X server in a
+@code{query-extension} request can be found with the following method:
+
+@deffn{Scheme Procedure} get-extension-info key
+
+Look up the information needed to enable extension with header name
+@var{key}, a symbol such as @code{randr}, @code{xc_misc}, etc.,
+corresponding to the @code{header} attribute in the root tag of an
+XML-XCB file.
+
+Returns a pair of values; the car is a string that can be passed as an
+argument to @code{query-extension}, and the cdr is the procedure for
+enabling the extension, as described previously.
+
+@end deffn
+
 Most X extensions will export some bindings that conflict with those
 exported by other X extensions. Modules that import extensions with
-conflicting definitions should use @code{#:rename} as
-appropriate. @inforef{Using Guile Modules, Using Guile Modules,
+conflicting definitions should use @code{#:rename} or @code{#:replace}
+as appropriate. @inforef{Using Guile Modules, Using Guile Modules,
 guile}.
 
 @node X Extensions Used by Guile XCB
@@ -810,55 +860,28 @@ required.
 BIG-REQUESTS: In the core X protocol, requests are limited in size to
 around 260KB. To support certain extensions that require longer
 requests, the big requests extension was created to allow requests up
-to 16GB. Guile XCB will automatically use big requests when necessary
-if they are available.
+to 16GB. Guile XCB will use big requests when necessary if they are
+enabled.
 
-@deffn {Scheme Procedure} enable-big-requests! xcb-conn enable
-Modifies an xcb connection so that it can send requests larger than
-the original limit using the big requests extension. @var{xcb-conn} is
-the connection to modify and @var{enable} is the reply from a call to
-the big request extension's @code{Enable} request.
+@deffn {Scheme Procedure} enable-big-requests! [xcb-conn] enable
+Sets the request size limit for @var{xcb-conn}, or
+@code{current-xcb-connection} if it ommitted, to the value of
+@var{enable}'s @code{maximum-request-length} field. @var{enable}
+should be a reply to the big request extension's @code{enable}
+request.
 @end deffn
 
 @item
 XC_MISC: The X server supports a limited number of XIDs per
 connection; if the supply of XIDs runs out, @code{make-new-xid} will
-abort to a continuable prompt where the user has the option of
-retrieving a new range of XIDs from the server and updating the
-connection as follows:
+invoke a procedure associated with the xcb connection that should
+return the reply to an XC_MISC @code{get-xidrange} request.
 
-@lisp
-(call-with-prompt
- out-of-xids
- (lambda () (make X requests here) ... )
- (lambda (return-next-xid xcb-conn)
-   (parameterize ((current-xcb-connection xcb-conn))
-     (let ((result (reply-for GetXIDRange)))
-       (return-next-xid (update-xid-range! xcb-conn result))))))
-@end lisp
-
-This example uses @code{current-xcb-connection} and @code{reply-for}
-from the optional event loop library; a program could obtain the
-GetXIDRange reply from the server in some other manner as well.
-
-@deffn {Scheme Procedure} update-xid-range! xcb-conn range
-Modifies xcb connection @var{xcb-conn} to use the new xid range
-provided by @var{range}, which should be the reply to an XC_MISC
-@code{GetXIDRange} request. Returns the first xid in the new range.
+@deffn {Scheme Variable} set-on-xid-range-exhausted! xcb-conn proc
+Sets the xid range exhaustion procedure for @var{xcb-conn} to
+@var{proc}, which will receive @var{xcb-conn} as its argument, and
+must return an instance of @code{get-xidrange-reply}.
 @end deffn
-
-@deffn {Scheme Variable} out-of-xids
-The prompt tag Guile XCB will abort to when it runs out of XIDs for a
-given connection. The abort handler accepts two variables;
-@var{return-next-xid}, which should be called with the next XID the
-connection can use, and @var{xcb-conn}, the XCB connection that has
-run out of XIDs.
-@end deffn
-
-The use of a prompt in this occasion is to allow the user maximum
-flexibility in handling XID exhaustion when necessary. Applications
-that do not use enough XIDs to run out do not need to set up an
-@code{ouf-of-xids} prompt.
 
 @item
 Generic Event Extension: Standard X events are limited to 32 bytes in
@@ -877,7 +900,7 @@ extensions.
 
 The previously defined procedures for sending and receiving X data are
 all one needs to write X applications. However, polling the connection
-and handling replies, errors, and events manually can be distracting
+and handling replies, errors, and events manually can be error-prone
 and cumbersome. Guile XCB provides a basic framework for running an
 event loop and describing in advance how data from the X server will
 be handled.
@@ -912,25 +935,12 @@ module. @xref{What to Import}.
 The procedure @code{xcb-event-loop} provides a framework for running
 an asynchronous event loop.
 
-@deffn {Scheme Procedure} xcb-event-loop xcb-conn [proc]
-Repeatedly poll the X server connected to @var{xcb-conn} for replies,
-events, and errors, calling any handlers that might be associated with
-them.
+@deffn {Scheme Procedure} xcb-event-loop xcb-conn proc
+Execute thunk @var{proc} in a dynamic scope where
+@code{current-xcb-connection} is bound to @var{xcb-conn}, and an event
+loop for handling calls to the @code{solicit}/@code{notify} procedures
+is in place. @xref{Solicit and Notify}.
 
-@var{proc} is a procedure that is run inside the event loop. Inside of
-@var{proc}'s dynamic scope, the parameter
-@code{current-xcb-connection} is bound to @var{xcb-conn}, and the
-@code{solicit}/@code{notify} co-routines are also
-available. @xref{Solicit and Notify}.
-
-Omitting @var{proc} causes the loop to run continuously until the xcb
-connection is disconnected.
-@end deffn
-
-@deffn {Scheme Variable} current-xcb-connection
-A parameter that is dynamically bound to an event loop's xcb
-connection during the dynamic extent of a call to
-@code{xcb-event-loop}.
 @end deffn
 
 Two macros are provided as wrappers for @code{xcb-event-loop}:
@@ -948,19 +958,20 @@ the thunk is completed and the xcb connection is also disconnected.
 @node Listening to the X Server
 @subsection Listening to the X Server
 
-Since the event loop is an optional feature of Guile XCB, an XCB
-connection is not by default prepared for use in one. The following
-procedures are available to add event loop functionality to an
-existing XCB connection:
+By default, errors from the X server are thrown as guile errors. To
+prepare an event loop with a different error-handler, use the
+following method:
 
-@deffn{Scheme Procedure} event-loop-prepare! xcb-conn [error-handler]
+@deffn{Scheme Procedure} event-loop-prepare! xcb-conn error-handler
 Prepares xcb connection @var{xcb-conn} for use inside of an event
-loop. @var{error-handler}, if present, is a procedure that will be
-called when unhandled errors are received from the X server. Otherwise
-those errors will be ignored.
+loop. @var{error-handler} is a procedure that will be called when
+errors are received from the X server. Otherwise those errors will be
+thrown as guile errors.
 
-This procedure must be called before the xcb connection can listen for
-any events, errors, or replies.
+This procedure must also be called before the xcb connection can
+listen for any events, errors, or replies. It will be called when an
+event loop starts if the XCB connection is not already prepared.
+
 @end deffn
 
 @deffn{Scheme Procedure} event-loop-prepared? xcb-conn
@@ -971,9 +982,9 @@ loop.
 Once an XCB connection is prepared for use in an event loop, the
 following procedures can be used to define its behavior when data is
 received from the X server. These procedures can be called before an
-event loop or inside of one. When they are called inside of an event
-loop, @var{xcb-conn} is optional; omitting it will cause the value of
-@code{(current-xcb-connection)} to be used instead.
+event loop or inside of one. The argument @var{xcb-conn} is optional;
+omitting it will cause the value of @code{current-xcb-connection} to
+be used instead.
 
 @deffn{Scheme Procedure} listen! [xcb-conn] event-type tag proc [guard]
 
@@ -1019,19 +1030,18 @@ binary data from the server will be passed instead.
 Removes the default event handler from @var{xcb-conn}.
 @end deffn
 
-@deffn{Scheme Procedure} reply-listen! [xcb-conn] sequence-number reply-proc error-proc
+@deffn{Scheme Procedure} reply-listen! [xcb-conn] sequence-number reply-proc
 
-When a reply or error with @var{sequence-number} is received by
-@var{xcb-conn}, calls @var{reply-proc} with the reply as an argument,
-or @var{error-proc} with the error as an argument, depending on the
-type of result.
+When a reply with @var{sequence-number} is received by @var{xcb-conn},
+calls @var{reply-proc} with the reply as an argument. The handler is
+removed after it has been called.
 
 @end deffn
 
 The following syntax is useful for creating a set of related,
 self-contained, and self-managing event listeners:
 
-@deffn{Scheme Syntax} create-listener (tag stop! reset! (reset-expr ...) (((event-struct event) body body* ...) ...)
+@deffn{Scheme Syntax} create-listener (tag stop! reset! reset-expr ...) ((event-struct event) body body* ...) ...
 
 Adds a set of event listeners to the current xcb connection. Each
 @var{event-struct} is an XCB struct type for an event and @var{event}
@@ -1055,7 +1065,7 @@ This macro is useful, for example, when creating a text editing widget
 that updates its contents on key press events and resets/stops the
 listeners on window mapping/unmapping events.
 
-@deffn{Scheme Syntax} create-listener (tag stop! (((event-struct name) body body* ...) ...)
+@deffn{Scheme Syntax} create-listener (tag stop!) ((event-struct name) body body* ...) ...
 
 This is shortened syntax for cases where @var{reset!} is not needed in
 @code{create-listener}.
@@ -1078,7 +1088,7 @@ One approach is to create a new function, called a @emph{callback},
 and queue it to run when the mouse click event happens. The keypress
 handler finishes, and control goes back to the event loop. When the
 mouse click takes place, the callback gets invoked and finishes the
-work that the keypress event started.
+work that the keypress event handler started.
 
 The callback approach is a common one and is often very
 useful. However, it can sometimes lead to a very large nested mess of
@@ -1091,25 +1101,40 @@ and prompts to make each handler function behave as if it were running
 in its own thread without any of the associated concurrency
 challenges. @inforef{Prompts, Prompts, guile}.
 
-The only caveat is that this approach only @emph{emulates}
-multithreading---it is not the real thing. While an event handler is
-running, no new events can be processed. Any long-running operations
-that might make the application unresponsive should be handled by an
-actual separate thread.
+There are some caveats to this approach. First, it only
+@emph{emulates} multithreading---it is not the real thing. While an
+event handler is running, no new events will be processed. Any
+long-running operations that might make the application unresponsive
+should be handled by an actual separate thread.
 
-The basic mechanism is implemented by two cooperative routines,
-@code{solicit} and @code{notify}.
+Secondly, delimited continuations save pending function calls and
+restore them when they are called. Normally this works fine, but some
+functions set up ``continuation barriers,'' and can't be restored. If
+the function @code{solicit} described below gets called when function
+calls like @code{run-hook}, @code{hash-for-each}, or @code{force} are
+on the stack somewhere, a later call to @code{notify} for the
+solicited tag will cause an error. @inforef{Continuation Barriers,
+Continuation Barriers, guile}.
+
+With those warnings in mind, it is still possible to write a flexible
+and expressive asynchronous application using the following
+procedures:
 
 @deffn{Scheme Procedure} solicit tag [proc]
 
-Returns control back to the event loop until some other handler
-function calls @code{notify} with the same @var{tag}; then this
-@code{solicit} returns the value and the procedure continues as
-normal.
+If @var{proc} is provided, set @var{proc} up as a callback that will
+be invoked when some other procedure calls @code{notify} with a value
+for @var{tag}. The value is be @var{proc}'s only
+argument.
+
+Otherwise, returns control back to the event loop until some other
+handler function calls @code{notify} with the same @var{tag}. At that
+point, this @code{solicit} returns the value and the procedure
+continues as normal.
 
 If a handler has already called @code{notify} and the tag was not yet
-solicited at that time, the stored value will be consumed by this call
-to @code{solicit}.
+solicited at that time, the oldest stored value will be consumed by
+this call to @code{solicit}.
 
 If another procedure has already solicited @var{tag}, it will
 never complete. Multiple @code{solicits} do not queue up.
@@ -1121,7 +1146,7 @@ never complete. Multiple @code{solicits} do not queue up.
 Notifies the event loop of the presence of value @var{val} marked with
 @var{tag} and finishes running the pending procedure that has called
 @code{solicit} on @var{tag}, if it exists. Otherwise, the value will
-be stored until some procedure calls @code{solicit} for @var{tag}.
+be queued for later calls to @code{solicit} for @var{tag}.
 
 @end deffn
 
@@ -1132,20 +1157,17 @@ for calls to @code{solicit} and @code{notify}.
 
 @end deffn
 
-A few macros built on @code{solicit} and @code{notify} can be used for
-more XCB-specific tasks:
+A few procedures and macros built on @code{solicit} and @code{notify}
+can be used for more XCB-specific tasks:
 
 @deffn{Scheme Procedure} delay-reply proc . args
 
 Call XCB request procedure @var{proc} on the current xcb connection
 with arguments @var{args}. Returns a tag that, when used in a call to
-@code{solicit}, will yield the corresponding reply (or error) for the
-request. Do not use this procedure for a request that does not receive
-a reply from the server, or else the procedure that called it will
-never resume.
-
-The xcb connection is included automatically and should not be in the
-list of arguments.
+@code{solicit}, will yield the corresponding reply for the request. Do
+not use this procedure for a request that does not receive a reply
+from the server, or else the procedure that called it will never
+resume.
 
 @end deffn
 
@@ -1162,10 +1184,6 @@ Calls each XCB request procedure @var{proc} with its associated
 @var{arg} list as arguments. When all of the replies are received,
 they are each bound to the corresponding symbol @var{reply} and used
 as arguments to call a procedure with body @var{stmt stmt* ...} .
-
-As with @code{delay-reply} and @code{reply-for}, the current xcb
-connection will be used to make the reqests and an xcb connection
-should not be included in the argument lists.
 
 Returns a tag that can be used in a call to @code{solicit} to wait for
 the procedure to execute and then return its result.
@@ -1193,16 +1211,18 @@ brief, which summarizes the item in one or two sentances, and full,
 which can include detailed information as well as examples and
 cross-references.
 
-@deffn {Scheme Procedure} document-full header item-type name
+@deffn {Scheme Procedure} document-full header item-type item
 Display the full documentation for an XCB element @var{name} of type
 @var{item-type} (@code{enum}, @code{request}, @code{reply},
 etc.). @var{header} is an all lower-case symbol identifying the
 extension to search for documentation (@code{xproto}, @code{bigreq},
 @code{glx}, etc.). @var{header} and @var{item-type} are symbols and
-@var{name} is a string.
+@var{item} is the actual scheme object to document (use the request
+procedure with @var{item-type} @code{reply} to see documentation for
+the reply).
 @end deffn
 
-@deffn {Scheme Procedure} document-brief header item-type name
+@deffn {Scheme Procedure} document-brief header item-type item
 Display brief documentation for an XCB element. Arguments are the same
 as in @code{document-full}.
 @end deffn
@@ -1220,13 +1240,9 @@ REPL. The record type printers output, for example, a list of fields
 and types for structures, and a list of keys and values for enums.
 
 The underlying structure used to send a request to the server has the
-name REQUEST-NAME-struct (@code{CreateWindow-struct},
-@code{QueryExtension-struct}, etc.). Evaluating this structure at the
+name REQUEST-NAME-struct (@code{create-window-struct},
+@code{query-extension-struct}, etc.). Evaluating this structure at the
 REPL will show the required fields for the request and their types.
-
-A unique method is created for every single accessor and modifier in
-an XCB structure in order to allow tab completion at readline-enabled
-guile prompts or inside Emacs. @inforef{Using Guile in Emacs, Emacs, guile}.
 
 @node Function Index
 @unnumbered Function Index

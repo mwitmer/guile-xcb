@@ -35,6 +35,8 @@
             set-xcb-connection-last-xid!
 	    make-xcb-connection
             poll-xcb-connection
+            on-xid-range-exhausted
+            set-on-xid-range-exhausted!
             set-xcb-connection-setup!
             xcb-connection-setup
             get-maximum-request-length
@@ -72,6 +74,7 @@
   (original-maximum-request-length
    original-maximum-request-length set-original-maximum-request-length!)
   (maximum-request-length maximum-request-length set-maximum-request-length!)
+  (on-xid-range-exhausted on-xid-range-exhausted set-on-xid-range-exhausted!)
   (events all-events)
   (errors all-errors)
   (extensions xcb-connection-extensions)

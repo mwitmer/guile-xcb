@@ -157,7 +157,8 @@
     (do-event-loop dispatch finished? proc #:after after
                    #:on-error (lambda args
                                 (if (default-error-handler loop-data)
-                                    (apply (default-error-handler loop-data) args))))))
+                                    (apply (default-error-handler loop-data) args)
+                                    (error args))))))
 
 (define-public (delay-reply proc . args)
   (define notify-tag (make-tag `(xcb-cookie ,proc)))
