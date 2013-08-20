@@ -11,7 +11,7 @@
                with-connection loop-with-connection
                create-tagged-listener
                event-loop-prepare!)
-  #:re-export ((abort . solicit) notify make-tag post-to-event-loop notify-map))
+  #:re-export (solicit notify make-tag post-to-event-loop notify-map unsolicit))
 
 (define-record-type event-loop-data
   (make-event-loop-data-inner
@@ -23,10 +23,9 @@
   (reply-handlers reply-handlers)
   (default-error-handler default-error-handler set-default-error-handler!))
 
-(define-public (unsolicit tag) (abort tag #f))
 (define (on-unknown-event event) #f)
 
-(define (basic-error-handler cont arg) (throw 'xcb-error arg))
+(define (basic-error-handler cont . args) (throw 'xcb-error args))
 
 (define (make-event-loop-data)
   (make-event-loop-data-inner
@@ -154,13 +153,11 @@
         (if (and dispatch-proc data) (dispatch-proc (xcb-data data)) #f))
       (call-with-values poll dispatch))
     (define (finished?) (not (xcb-connected? xcb-conn)))
-    (define (after)
-      (if (xcb-connected? xcb-conn) (xcb-connection-flush! xcb-conn)))
-    (do-event-loop dispatch finished? proc #:after after
-                   #:on-error (lambda args
-                                (if (default-error-handler loop-data)
-                                    (apply (default-error-handler loop-data) args)
-                                    (error args))))))
+    (define (on-error . args)
+      (if (default-error-handler loop-data)
+          (apply (default-error-handler loop-data) args)
+          (error args)))
+    (do-event-loop dispatch proc on-error)))
 
 (define-public (delay-reply proc . args)
   (define notify-tag (make-tag `(xcb-cookie ,proc)))
@@ -170,7 +167,7 @@
    (lambda (reply) (notify notify-tag reply)))
   notify-tag)
 
-(define-public (reply-for proc . args) (abort (apply delay-reply proc args)))
+(define-public (reply-for proc . args) (solicit (apply delay-reply proc args)))
 
 (define-syntax-rule (with-connection xcb-conn stmt ...)
   (xcb-event-loop xcb-conn (lambda () stmt ...)))
@@ -178,7 +175,7 @@
 (define-syntax-rule (loop-with-connection xcb-conn stmt ...)
   (xcb-event-loop xcb-conn (lambda () stmt ...
                                    (while (xcb-connected? xcb-conn)
-                                     (abort forever-tag)))))
+                                     (solicit tick-tag)))))
 
 (define (verify-fields event . plist)
   (let verify ((plist plist))
@@ -244,7 +241,7 @@
          (when-done
           (lambda (replies)
             (notify notify-tag (apply on-complete replies)))))
-    (abort pre-notify-tag when-done)
+    (solicit pre-notify-tag when-done)
     notify-tag))
 
 (define-public (delay-enable-extension extension-key)
