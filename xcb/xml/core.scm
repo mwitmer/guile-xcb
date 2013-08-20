@@ -22,7 +22,7 @@
   #:use-module (xcb xml enum)
   #:use-module (xcb xml xproto)
   #:use-module ((xcb xml records) 
-                #:select (xcb-type-name xcb-type-list? make-typed-value))
+                #:select (xcb-type-name xcb-type-list? make-typed-value typed-value?))
   #:use-module (xcb xml struct))
 
 (define-public (bv->xcb-string bv)
@@ -97,7 +97,6 @@
   (case-lambda
     ((xcb-conn xcb-type) (make-typed-value (next-xid-value xcb-conn) xcb-type))
     ((xcb-type)
-     (format #t "Connection: ~a\n" (current-xcb-connection))
      (make-typed-value (next-xid-value (current-xcb-connection)) xcb-type))))
 
 (define-public (make-xid val xcb-type)
@@ -193,3 +192,11 @@ string ~a to type ~a" val type)))))
      ((xcb-struct-modifier
        (xcb-struct-for-rec rec) field xcb-convert-from-string)
       rec n val))))
+
+(define-public (xcb= val1 val2)
+  (cond
+   ((typed-value? val1) (xid= val1 val2))
+   ((number? val1) (= val1 val2))
+   ((symbol? val1) (eq? val1 val2))
+   ((string? val1) (string= val1 val2))
+   (else (error "xml-xcb: Unable to compare values" val1 val2))))

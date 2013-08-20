@@ -13,6 +13,7 @@
   #:use-module ((xcb xml core)
                 #:select (make-new-xid
                           xref
+                          xcb=
                           xset!
                           xref-string
                           enable-big-requests!
@@ -50,6 +51,7 @@
                xref
                xref-string
                xset!
+               xcb=
                make-new-xid))
 
 (define-public (xcb-none xcb-type) (make-typed-value 0 xcb-type))

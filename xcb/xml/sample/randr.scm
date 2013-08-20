@@ -164,7 +164,7 @@
     (find match (map cdr mode-infos)))
 
   (define (get-output-info-by-name str)
-    (define (oi= oi) (string= (xcb-bytes->string (xref oi 'name)) str))
+    (define (oi= oi) (string= (xref-string oi 'name) str))
     (find oi= (map cdr output-infos)))
 
   (define (get-crtc-for-output output-info)
@@ -262,7 +262,7 @@ to SetCrtcConfig"))
               (get 'max-width) (get 'max-height))))
 
   (define (format-connected-output-info output-info)
-    (define output-name (xcb-bytes->string (xref output-info 'name)))
+    (define output-name (xref-string output-info 'name))
     (define crtc-info (get-crtc-for-output output-info))
     (define rotations
       (map (lambda (rotation) (assq-ref rotation-names rotation))
@@ -275,7 +275,7 @@ to SetCrtcConfig"))
             (xref output-info 'mm-width) (xref output-info 'mm-height)))
 
   (define (format-disconnected-output-info output-info)
-    (define output-name (xcb-bytes->string (xref output-info 'name)))
+    (define output-name (xref-string output-info 'name))
     (define (get-rotation-name rotation) (assq-ref rotation-names rotation))
     (format #f "~a disconnected ~a"
             output-name (map get-rotation-name all-rotations)))

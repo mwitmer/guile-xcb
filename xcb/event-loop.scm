@@ -4,10 +4,12 @@
   #:use-module (ice-9 control)
   #:use-module (srfi srfi-9)
   #:use-module (xcb xml connection)
+  #:use-module (xcb xml)
   #:use-module ((xcb xml xproto) #:select (query-extension))
   #:use-module (flow event-loop)
   #:export (with-replies create-listener
                with-connection loop-with-connection
+               create-tagged-listener
                event-loop-prepare!)
   #:re-export ((abort . solicit) notify make-tag post-to-event-loop notify-map))
 
@@ -178,28 +180,62 @@
                                    (while (xcb-connected? xcb-conn)
                                      (abort forever-tag)))))
 
+(define (verify-fields event . plist)
+  (let verify ((plist plist))
+    (if (null? plist) #t
+        (let ((val1 (xref-string event (keyword->symbol (car plist))))
+              (val2 (cadr plist)))
+          (if (xcb= val1 val2) (verify (cddr plist)) #f)))))
+
 (define-syntax make-listener
-  (syntax-rules (guard)
-    ((_ event-struct tag name (guard guard-expr ...) expr expr* ...)
+  (syntax-rules ()
+    ((_ event-struct tag name (guard guard* ...) expr expr* ...)
      (listen! event-struct tag
               (lambda (name) expr expr* ...)
-              (lambda (name) (and guard-expr ...))))
-    ((_ event-struct tag name expr expr* ...)
+              (lambda (name) (verify-fields name guard guard* ...))))
+    ((_ event-struct tag name () expr expr* ...)
      (listen! event-struct tag (lambda (name) expr expr* ...)))))
 
 (define-syntax create-listener
   (syntax-rules ()
-    ((_ (tag stop! reset! reset-expr ...)
-        ((event-struct name) body body* ...) ...)
+    ((_ (stop! reset! reset-expr ...)
+        ((event-struct name guard ...) body body* ...) ...)
+     (create-tagged-listener (make-tag 'listener) (stop! reset! reset-expr ...)
+       ((event-struct name guard ...) body body* ...) ...))
+    ((_ (stop!) ((event-struct name guard ...) body body* ...) ...)
+     (create-listener
+         (stop! reset!) ((event-struct name guard ...) body body* ...) ...))
+    ((_ () ((event-struct name guard ...) body body* ...) ...)
+     (create-listenern
+         (stop! reset!) ((event-struct name guard ...) body body* ...) ...))))
+
+(define-syntax create-tagged-listener
+  (syntax-rules ()
+    ((_ tag (stop! reset! reset-expr ...)
+        ((event-struct name guard ...) body body* ...) ...)
      (letrec* ((stop! (lambda () (unlisten! event-struct tag) ...))
                (reset!
                 (lambda ()
                   reset-expr ...
-                  (make-listener event-struct tag name body body* ...) ...)))
+                  (make-listener
+                   event-struct tag name (guard ...) body body* ...) ...)))
        (reset!) (values stop! reset!)))
-    ((_ (tag stop!) ((event-struct name) body body* ...) ...)
-     (create-listener
-         (tag stop! reset!) ((event-struct name) body body* ...) ...))))
+    ((_ tag (stop!) ((event-struct name guard ...) body body* ...) ...)
+     (create-tagged-listener tag
+         (stop! reset!) ((event-struct name guard ...) body body* ...) ...))
+    ((_ tag () ((event-struct name guard ...) body body* ...) ...)
+     (create-tagged-listener tag
+         (stop! reset!) ((event-struct name guard ...) body body* ...) ...))))
+
+(define-syntax-rule (with-replies ((reply proc arg ...) ...) stmt stmt* ...)
+  (let* ((pre-notify-tag (notify-map (list (delay-reply proc arg ...) ...)))
+         (notify-tag (make-tag '(with-replies (reply <- proc) ...)))
+         (on-complete (lambda (reply ...) stmt stmt* ...))
+         (when-done
+          (lambda (replies)
+            (notify notify-tag (apply on-complete replies)))))
+    (solicit pre-notify-tag when-done)
+    notify-tag))
 
 (define-syntax-rule (with-replies ((reply proc arg ...) ...) stmt stmt* ...)
   (let* ((pre-notify-tag (notify-map (list (delay-reply proc arg ...) ...)))

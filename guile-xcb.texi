@@ -1041,15 +1041,18 @@ removed after it has been called.
 The following syntax is useful for creating a set of related,
 self-contained, and self-managing event listeners:
 
-@deffn{Scheme Syntax} create-listener (tag stop! reset! reset-expr ...) ((event-struct event) body body* ...) ...
+@deffn{Scheme Syntax} create-listener (stop! reset! reset-expr ...) ((event-struct event #:field value ...) body body* ...) ...
 
 Adds a set of event listeners to the current xcb connection. Each
 @var{event-struct} is an XCB struct type for an event and @var{event}
 is bound to the event within the accompanying expressions @var{body
 body* ...}.
 
-@var{tag} is the tag name to use in all calls to @code{listen!} and
-@code{unlisten!}.
+@var{#:field} is a keyword for a field of the event struct
+(eg. #:window, #:event, #:count, etc.), and @var{value} is the
+required value for that field. There can be any number of
+@var{#:field}/@var{value} pairs. The body expressions will only be
+evaluted if the fields of the event match the required values.
 
 @var{stop!} is the name for a procedure that can be called anywhere in
 a body expression that removes the listeners from the connection.
@@ -1061,15 +1064,21 @@ once to start the listeners when the macro is first evaluated.
 The macro returns @var{stop!} and @var{reset!} as two values.
 @end deffn
 
-This macro is useful, for example, when creating a text editing widget
-that updates its contents on key press events and resets/stops the
-listeners on window mapping/unmapping events.
-
-@deffn{Scheme Syntax} create-listener (tag stop!) ((event-struct name) body body* ...) ...
+@deffn{Scheme Syntax} create-listener ([stop!]) ((event-struct name) body body* ...) ...
 
 This is shortened syntax for cases where @var{reset!} is not needed in
-@code{create-listener}.
+@code{create-listener}. @var{stop!} may also be ommitted.
 
+@end deffn
+
+@deffn{Scheme Syntax} create-tagged-listener tag ...
+
+Identitical to @code{create-tagged-listener}, but requires an
+additional argument @var{tag}, which will is used as the tag argument
+in @code{listen!}/@code{unlisten!}.
+
+Use @code{create-tagged-listener} if newly created listeners are meant
+to replace pre-existing ones with the same tag.
 @end deffn
 
 @node Solicit and Notify
@@ -1124,8 +1133,7 @@ procedures:
 
 If @var{proc} is provided, set @var{proc} up as a callback that will
 be invoked when some other procedure calls @code{notify} with a value
-for @var{tag}. The value is be @var{proc}'s only
-argument.
+for @var{tag}. The value is @var{proc}'s only argument.
 
 Otherwise, returns control back to the event loop until some other
 handler function calls @code{notify} with the same @var{tag}. At that
