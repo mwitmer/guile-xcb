@@ -5,11 +5,15 @@
                           xcb-connection-has-extension?
                           xcb-connection-display
                           set-on-xid-range-exhausted!
+                          xcb-data
+                          xcb-struct
+                          xcb-sequence-number
                           current-xcb-connection
                           xcb-disconnect!
                           poll-xcb-connection))
   #:use-module ((xcb xml doc) #:select (document-full document-brief))
   #:use-module ((xcb xml auth) #:select (xcb-connect!))
+  #:use-module ((xcb xml struct) #:select (xcb-struct-fields xcb-struct-name))
   #:use-module ((xcb xml core)
                 #:select (make-new-xid
                           xref
@@ -31,12 +35,17 @@
                xid=
                xenum-ref
                xenum-key-ref
+               xcb-data
+               xcb-struct
+               xcb-struct-name
+               xcb-sequence-number
                xenum-or
                xenum-keys
                xenum-values
                enable-big-requests!
                update-xid-range!
                document-full
+               xcb-struct-fields
                set-on-xid-range-exhausted!
                document-brief
                xcb-connect!

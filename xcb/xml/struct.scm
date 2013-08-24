@@ -445,8 +445,8 @@ as an xcb list type" value))
             (xenum-ref xenum val))))
     (cond
      ((number? val) val)
-     ((eq? key #t) 1)
-     ((eq? key #f) 0)
+     ((eq? val #t) 1)
+     ((eq? val #f) 0)
      ((or (symbol? val) (list? val))
       (cond
        ((defined? key) (get-from-enum key))
@@ -460,6 +460,9 @@ key ~a" val key))))
   (values
    (apply logior (map-in-order car sorted))
    (list->vector (map-in-order unbox sorted))))
+
+(define-public (xcb-struct-fields struct-type)
+  (delq 'xcb-struct-type (record-type-fields (inner-type struct-type))))
 
 (define-public (xcb-struct-unpack-from-bytevector xcb-struct bv)
   (define port (open-bytevector-input-port bv))
