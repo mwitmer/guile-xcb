@@ -963,20 +963,27 @@ prepare an event loop with a different error-handler, use the
 following method:
 
 @deffn{Scheme Procedure} event-loop-prepare! xcb-conn error-handler
-Prepares xcb connection @var{xcb-conn} for use inside of an event
-loop. @var{error-handler} is a procedure that will be called when
-errors are received from the X server. Otherwise those errors will be
-thrown as guile errors.
 
-This procedure must also be called before the xcb connection can
-listen for any events, errors, or replies. It will be called when an
-event loop starts if the XCB connection is not already prepared.
+Prepares @var{xcb-conn} for use in an event loop. @var{error-handler}
+is a procedure that will be called when the X server sends an
+error. It takes two arguments: @var{resume}, a procedure that, when
+called, will return control back to the event loop, and @var{data}, a
+vector returned from @code{poll-xcb-connection}.
+
+It is only necessary to call this procedure before calling
+@code{xcb-event-loop} if @var{error-handler} is provided, or if
+reply/event handler procedures are going to be attached to the
+connection before the event loop starts. Otherwise, @var{xcb-conn}
+will automatically be prepared with the default error handler at that
+point.
 
 @end deffn
 
 @deffn{Scheme Procedure} event-loop-prepared? xcb-conn
+
 Returns @code{#t} if @var{xcb-conn} is prepared for use in an event
 loop.
+
 @end deffn
 
 Once an XCB connection is prepared for use in an event loop, the
@@ -1073,7 +1080,7 @@ This is shortened syntax for cases where @var{reset!} is not needed in
 
 @deffn{Scheme Syntax} create-tagged-listener tag ...
 
-Identitical to @code{create-tagged-listener}, but requires an
+Identitical to @code{create-listener}, but requires an
 additional argument @var{tag}, which will is used as the tag argument
 in @code{listen!}/@code{unlisten!}.
 
@@ -1176,6 +1183,15 @@ with arguments @var{args}. Returns a tag that, when used in a call to
 not use this procedure for a request that does not receive a reply
 from the server, or else the procedure that called it will never
 resume.
+
+@end deffn
+
+@deffn{Scheme Procedure} delay-enable-extension extension-key
+
+Sends a @code{query-extension} request to the server and, if the
+extension is present, enables that extension for the current xcb
+connection when the reply arrives. Returns a tag for use with
+@code{solicit} to defer to the event loop until the reply arrives.
 
 @end deffn
 
