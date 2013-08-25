@@ -111,7 +111,7 @@
      Create an XID with of type XID-TYPE with id number N."
   (make-typed-value val xcb-type))
 
-(define (xcb-event->vector/c xcb-conn event)  
+(define (xcb-event->vector/c xcb-conn event)
   (define rtd (record-type-descriptor event))
   (define event-type ((record-accessor rtd 'xcb-struct-type) event))
   (define raw (xcb-struct-pack-to-bytevector event))

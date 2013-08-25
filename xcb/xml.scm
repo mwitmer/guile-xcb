@@ -16,7 +16,7 @@
 ;;; Commentary:
 
 ;; This module exposes a public interface of support procedures for
-;; the Guile XCB implementation of the X protocol. 
+;; the Guile XCB implementation of the X protocol.
 
 (define-module (xcb xml)
   #:use-module ((xcb xml connection)

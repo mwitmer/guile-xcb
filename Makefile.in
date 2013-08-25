@@ -80,9 +80,9 @@ subdir = .
 DIST_COMMON = INSTALL NEWS README AUTHORS ChangeLog \
 	$(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(top_srcdir)/configure $(am__configure_deps) \
-	$(top_srcdir)/build_aux/texinfo.tex COPYING \
-	build_aux/install-sh build_aux/missing build_aux/texinfo.tex \
-	$(top_srcdir)/build_aux/install-sh \
+	$(top_srcdir)/build_aux/texinfo.tex $(nobase_dist_data_DATA) \
+	COPYING build_aux/install-sh build_aux/missing \
+	build_aux/texinfo.tex $(top_srcdir)/build_aux/install-sh \
 	$(top_srcdir)/build_aux/missing
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/guile.m4 \
@@ -154,7 +154,8 @@ am__can_run_installinfo = \
     n|no|NO) false;; \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
-am__installdirs = "$(DESTDIR)$(infodir)" "$(DESTDIR)$(godir)"
+am__installdirs = "$(DESTDIR)$(infodir)" "$(DESTDIR)$(datadir)" \
+	"$(DESTDIR)$(godir)"
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
     $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
@@ -182,7 +183,7 @@ am__uninstall_files_from_dir = { \
     || { echo " ( cd '$$dir' && rm -f" $$files ")"; \
          $(am__cd) "$$dir" && rm -f $$files; }; \
   }
-DATA = $(nobase_go_DATA)
+DATA = $(nobase_dist_data_DATA) $(nobase_go_DATA)
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) $(LISP)
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 distdir = $(PACKAGE)-$(VERSION)
@@ -291,50 +292,101 @@ CLEANFILES = xcb/xml/ext/*.go xcb/xml/*.go language/xml-xcb/*.go flow/*.go xcb/*
 info_TEXINFOS = guile-xcb.texi
 godir = $(SCM_SITE_CCACHE_DIR)
 nobase_go_DATA = \
-  flow/event-loop.go                 \
-  xcb/xml/records.go                 \
-  xcb/xml/enum.go                    \
-  xcb/xml/type.go                    \
-  language/xml-xcb/support.go        \
-  xcb/xml/union.go                   \
-  xcb/xml/struct.go                  \
-  xcb/xml/doc.go                     \
-  xcb/xml/connection.go              \
-  language/xml-xcb/compile-scheme.go \
-  language/xml-xcb/spec.go           \
-  xcb/event-loop.go                  \
-  xcb/xml/xproto.go                  \
-  xcb/xml/core.go                    \
-  xcb/xml/ext-support.go             \
-  xcb/xml/ext/bigreq.go              \
-  xcb/xml/ext/ge.go                  \
-  xcb/xml/ext/xc_misc.go             \
-  xcb/xml/auth.go                    \
-  xcb/xml.go                         \
-  xcb/xml/ext/render.go              \
-  xcb/xml/ext/randr.go               \
-  xcb/xml/ext/dri2.go                \
-  xcb/xml/ext/shape.go               \
-  xcb/xml/ext/xfixes.go              \
-  xcb/xml/ext/composite.go           \
-  xcb/xml/ext/damage.go              \
-  xcb/xml/ext/dpms.go                \
-  xcb/xml/ext/glx.go                 \
-  xcb/xml/ext/record.go              \
-  xcb/xml/ext/res.go                 \
-  xcb/xml/ext/screensaver.go         \
-  xcb/xml/ext/shm.go                 \
-  xcb/xml/ext/sync.go                \
-  xcb/xml/ext/xevie.go               \
-  xcb/xml/ext/xf86dri.go             \
-  xcb/xml/ext/xf86vidmode.go         \
-  xcb/xml/ext/xinerama.go            \
-  xcb/xml/ext/xinput.go              \
-  xcb/xml/ext/xkb.go                 \
-  xcb/xml/ext/xselinux.go            \
-  xcb/xml/ext/xtest.go               \
-  xcb/xml/ext/xv.go                  \
+  flow/event-loop.go                      \
+  xcb/xml/records.go                      \
+  xcb/xml/enum.go                         \
+  xcb/xml/type.go                         \
+  language/xml-xcb/support.go             \
+  xcb/xml/union.go                        \
+  xcb/xml/struct.go                       \
+  xcb/xml/doc.go                          \
+  xcb/xml/connection.go                   \
+  language/xml-xcb/compile-scheme.go      \
+  language/xml-xcb/spec.go                \
+  xcb/event-loop.go                       \
+  xcb/xml/xproto.go                       \
+  xcb/xml/core.go                         \
+  xcb/xml/ext-support.go                  \
+  xcb/xml/ext/bigreq.go                   \
+  xcb/xml/ext/ge.go                       \
+  xcb/xml/ext/xc_misc.go                  \
+  xcb/xml/auth.go                         \
+  xcb/xml.go                              \
+  xcb/xml/ext/render.go                   \
+  xcb/xml/ext/randr.go                    \
+  xcb/xml/ext/dri2.go                     \
+  xcb/xml/ext/shape.go                    \
+  xcb/xml/ext/xfixes.go                   \
+  xcb/xml/ext/composite.go                \
+  xcb/xml/ext/damage.go                   \
+  xcb/xml/ext/dpms.go                     \
+  xcb/xml/ext/glx.go                      \
+  xcb/xml/ext/record.go                   \
+  xcb/xml/ext/res.go                      \
+  xcb/xml/ext/screensaver.go              \
+  xcb/xml/ext/shm.go                      \
+  xcb/xml/ext/sync.go                     \
+  xcb/xml/ext/xevie.go                    \
+  xcb/xml/ext/xf86dri.go                  \
+  xcb/xml/ext/xf86vidmode.go              \
+  xcb/xml/ext/xinerama.go                 \
+  xcb/xml/ext/xinput.go                   \
+  xcb/xml/ext/xkb.go                      \
+  xcb/xml/ext/xselinux.go                 \
+  xcb/xml/ext/xtest.go                    \
+  xcb/xml/ext/xv.go                       \
   xcb/xml/ext/xvmc.go
+
+nobase_dist_data_DATA = \
+  flow/event-loop.scm                     \
+  xcb/xml/records.scm                     \
+  xcb/xml/enum.scm                        \
+  xcb/xml/type.scm                        \
+  language/xml-xcb/support.scm            \
+  xcb/xml/union.scm                       \
+  xcb/xml/struct.scm                      \
+  xcb/xml/doc.scm                         \
+  xcb/xml/test.scm                        \
+  xcb/xml/switch-test.scm                 \
+  xcb/xml/sample/tinywm.scm               \
+  xcb/xml/sample/randr.scm                \
+  xcb/xml/sample/win.scm                  \
+  xcb/xml/connection.scm                  \
+  language/xml-xcb/compile-scheme.scm     \
+  language/xml-xcb/spec.scm               \
+  xcb/event-loop.scm                      \
+  xcb/xml/xproto.xml                      \
+  xcb/xml/core.scm                        \
+  xcb/xml/ext-support.scm                 \
+  xcb/xml/ext/bigreq.xml                  \
+  xcb/xml/ext/ge.xml                      \
+  xcb/xml/ext/xc_misc.xml                 \
+  xcb/xml/auth.scm                        \
+  xcb/xml.scm                             \
+  xcb/xml/ext/render.xml                  \
+  xcb/xml/ext/randr.xml                   \
+  xcb/xml/ext/dri2.xml                    \
+  xcb/xml/ext/shape.xml                   \
+  xcb/xml/ext/xfixes.xml                  \
+  xcb/xml/ext/composite.xml               \
+  xcb/xml/ext/damage.xml                  \
+  xcb/xml/ext/dpms.xml                    \
+  xcb/xml/ext/glx.xml                     \
+  xcb/xml/ext/record.xml                  \
+  xcb/xml/ext/res.xml                     \
+  xcb/xml/ext/screensaver.xml             \
+  xcb/xml/ext/shm.xml                     \
+  xcb/xml/ext/sync.xml                    \
+  xcb/xml/ext/xevie.xml                   \
+  xcb/xml/ext/xf86dri.xml                 \
+  xcb/xml/ext/xf86vidmode.xml             \
+  xcb/xml/ext/xinerama.xml                \
+  xcb/xml/ext/xinput.xml                  \
+  xcb/xml/ext/xkb.xml                     \
+  xcb/xml/ext/xselinux.xml                \
+  xcb/xml/ext/xtest.xml                   \
+  xcb/xml/ext/xv.xml                      \
+  xcb/xml/ext/xvmc.xml
 
 all: all-am
 
@@ -515,6 +567,30 @@ maintainer-clean-aminfo:
 	  echo " rm -f $$i $$i-[0-9] $$i-[0-9][0-9] $$i_i[0-9] $$i_i[0-9][0-9]"; \
 	  rm -f $$i $$i-[0-9] $$i-[0-9][0-9] $$i_i[0-9] $$i_i[0-9][0-9]; \
 	done
+install-nobase_dist_dataDATA: $(nobase_dist_data_DATA)
+	@$(NORMAL_INSTALL)
+	@list='$(nobase_dist_data_DATA)'; test -n "$(datadir)" || list=; \
+	if test -n "$$list"; then \
+	  echo " $(MKDIR_P) '$(DESTDIR)$(datadir)'"; \
+	  $(MKDIR_P) "$(DESTDIR)$(datadir)" || exit 1; \
+	fi; \
+	$(am__nobase_list) | while read dir files; do \
+	  xfiles=; for file in $$files; do \
+	    if test -f "$$file"; then xfiles="$$xfiles $$file"; \
+	    else xfiles="$$xfiles $(srcdir)/$$file"; fi; done; \
+	  test -z "$$xfiles" || { \
+	    test "x$$dir" = x. || { \
+	      echo " $(MKDIR_P) '$(DESTDIR)$(datadir)/$$dir'"; \
+	      $(MKDIR_P) "$(DESTDIR)$(datadir)/$$dir"; }; \
+	    echo " $(INSTALL_DATA) $$xfiles '$(DESTDIR)$(datadir)/$$dir'"; \
+	    $(INSTALL_DATA) $$xfiles "$(DESTDIR)$(datadir)/$$dir" || exit $$?; }; \
+	done
+
+uninstall-nobase_dist_dataDATA:
+	@$(NORMAL_UNINSTALL)
+	@list='$(nobase_dist_data_DATA)'; test -n "$(datadir)" || list=; \
+	$(am__nobase_strip_setup); files=`$(am__nobase_strip)`; \
+	dir='$(DESTDIR)$(datadir)'; $(am__uninstall_files_from_dir)
 install-nobase_goDATA: $(nobase_go_DATA)
 	@$(NORMAL_INSTALL)
 	@list='$(nobase_go_DATA)'; test -n "$(godir)" || list=; \
@@ -715,7 +791,7 @@ check-am: all-am
 check: check-am
 all-am: Makefile $(INFO_DEPS) $(DATA)
 installdirs:
-	for dir in "$(DESTDIR)$(infodir)" "$(DESTDIR)$(godir)"; do \
+	for dir in "$(DESTDIR)$(infodir)" "$(DESTDIR)$(datadir)" "$(DESTDIR)$(godir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: install-am
@@ -770,7 +846,8 @@ info: info-am
 
 info-am: $(INFO_DEPS)
 
-install-data-am: install-info-am install-nobase_goDATA
+install-data-am: install-info-am install-nobase_dist_dataDATA \
+	install-nobase_goDATA
 
 install-dvi: install-dvi-am
 
@@ -909,7 +986,8 @@ ps: ps-am
 ps-am: $(PSS)
 
 uninstall-am: uninstall-dvi-am uninstall-html-am uninstall-info-am \
-	uninstall-nobase_goDATA uninstall-pdf-am uninstall-ps-am
+	uninstall-nobase_dist_dataDATA uninstall-nobase_goDATA \
+	uninstall-pdf-am uninstall-ps-am
 
 .MAKE: install-am install-strip
 
@@ -921,14 +999,15 @@ uninstall-am: uninstall-dvi-am uninstall-html-am uninstall-info-am \
 	info-am install install-am install-data install-data-am \
 	install-dvi install-dvi-am install-exec install-exec-am \
 	install-html install-html-am install-info install-info-am \
-	install-man install-nobase_goDATA install-pdf install-pdf-am \
-	install-ps install-ps-am install-strip installcheck \
-	installcheck-am installdirs maintainer-clean \
-	maintainer-clean-aminfo maintainer-clean-generic mostlyclean \
-	mostlyclean-aminfo mostlyclean-generic pdf pdf-am ps ps-am \
-	tags-am uninstall uninstall-am uninstall-dvi-am \
-	uninstall-html-am uninstall-info-am uninstall-nobase_goDATA \
-	uninstall-pdf-am uninstall-ps-am
+	install-man install-nobase_dist_dataDATA install-nobase_goDATA \
+	install-pdf install-pdf-am install-ps install-ps-am \
+	install-strip installcheck installcheck-am installdirs \
+	maintainer-clean maintainer-clean-aminfo \
+	maintainer-clean-generic mostlyclean mostlyclean-aminfo \
+	mostlyclean-generic pdf pdf-am ps ps-am tags-am uninstall \
+	uninstall-am uninstall-dvi-am uninstall-html-am \
+	uninstall-info-am uninstall-nobase_dist_dataDATA \
+	uninstall-nobase_goDATA uninstall-pdf-am uninstall-ps-am
 
 
 %.go : %.xml language/xml-xcb/compile-scheme.go language/xml-xcb/spec.go xcb/xml/records.go
