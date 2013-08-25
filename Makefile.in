@@ -303,8 +303,8 @@ nobase_go_DATA = \
   xcb/xml/connection.go                   \
   language/xml-xcb/compile-scheme.go      \
   language/xml-xcb/spec.go                \
-  xcb/event-loop.go                       \
   xcb/xml/xproto.go                       \
+  xcb/event-loop.go                       \
   xcb/xml/core.go                         \
   xcb/xml/ext-support.go                  \
   xcb/xml/ext/bigreq.go                   \
