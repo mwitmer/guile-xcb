@@ -30,8 +30,9 @@
   #:export (solicit))
 
 (define-public (make-tag data)
-  "Create a unique object based on DATA to use as a tag for calls to
-'solicit'/'notify'."
+  "-- Scheme Procedure: make-tag data
+     Create a unique object based on DATA to use as a tag for calls to
+     'solicit'/'notify'."
   (list data))
 
 (define notify-param (make-parameter #f))
@@ -39,29 +40,32 @@
 (define post-param (make-parameter #f))
 
 (define-public (notify tag . vals)
-  "Notify the event loop of the presence of a values VALS associated
-with object TAG. If any continuation or procedure is pending on the
-event loop for TAG as a result from a call to 'solicit', it will be
-called once and removed from the event loop. Otherwise, VALS will be
-queued for use in future calls to 'solicit'."
+  "-- Scheme Procedure: notify tag . vals
+     Notify the event loop of the presence of a values VALS associated
+     with object TAG. If any continuation or procedure is pending on the
+     event loop for TAG as a result from a call to 'solicit', it will be
+     called once and removed from the event loop. Otherwise, VALS will be
+     queued for use in future calls to 'solicit'."
   (if (notify-param)
       (apply (notify-param) tag vals)
       (error "event-loop: Call to notify outside an event-loop")))
 
 (define* (solicit tag #:optional (proc *unspecified*))
-  "Place a procedure on the event loop to run when some call to
-'notify' provides a value for object TAG. If PROC is provided,
-'solicit' returns immediately with an unspecified value. Otherwise,
-control flow is yielded to the event loop until 'notify' is called for
-TAG, at which point this procedure returns the given value(s) and
-control flow returns to its continuation ."
+  "-- Scheme Procedure: solicit tag [proc]
+     Place a procedure on the event loop to run when some call to
+     'notify' provides a value for object TAG. If PROC is provided,
+     'solicit' returns immediately with an unspecified value. Otherwise,
+     control flow is yielded to the event loop until 'notify' is called for
+     TAG, at which point this procedure returns the given value(s) and
+     control flow returns to its continuation ."
   (if (solicit-param)
       ((solicit-param) tag proc)
       (error "event-loop: Call to solicit outside an event-loop")))
 
 (define-public (post-to-event-loop thunk)
-  "Queues THUNK to be executed the next time control is yielded to the
-event loop."
+  "-- post-to-event-loop thunk
+     Queues THUNK to be executed the next time control is yielded to the
+     event loop."
   (if (post-param)
       ((post-param) thunk)
       (error "event-loop: Call to post-to-event-loop outside an event-loop")))
@@ -70,31 +74,35 @@ event loop."
 (define tick-tag (make-tag 'tick))
 
 (define-public (event-loop-tick)
-  "Yields control flow to the event loop for only a single call to the
-event dispatcher. Returns the result of that call."
+  "-- event-loop-tick
+     Yields control flow to the event loop for only a single call to the
+     event dispatcher. Returns the result of that call."
   (solicit tick-tag))
 
 (define-public (event-loop-error . args)
-  "Signals an error to be handled by the event loop's installed error
+  "-- Scheme Procedure: event-loop-error . args
+     Signals an error to be handled by the event loop's installed error
 handler."
   (apply notify error-tag args))
 
 (define-public (unsolicit tag)
-  "Removes the pending procedure or continuation on the event loop for
-TAG if one is present."
+  "-- Scheme Procedure: unsolicit tag
+     Removes the pending procedure or continuation on the event loop for
+     TAG if one is present."
   (solicit tag #f))
 
 (define-public (do-event-loop dispatcher proc on-error)
-  "Runs PROC inside of an event loop. DISPATCHER is a non-blocking
-thunk that reads and handles events.
+  "-- Scheme Procedure: do-event-loop dispatcher proc on-error
+     Runs PROC inside of an event loop. DISPATCHER is a non-blocking
+     thunk that reads and handles events.
 
-See 'solicit' and 'notify' for an explanation on how to transfer
-control flow between PROC and DISPATCHER.
+     See 'solicit' and 'notify' for an explanation on how to transfer
+     control flow between PROC and DISPATCHER.
 
-ON-ERROR is a function that will be called when 'event-loop-error' is
-called. For its arguments, it takes RESUME, a function that returns to
-the event loop, and then all the values that were passed to
-'event-loop-error'."
+     ON-ERROR is a function that will be called when 'event-loop-error' is
+     called. For its arguments, it takes RESUME, a function that returns to
+     the event loop, and then all the values that were passed to
+     'event-loop-error'."
   (define conts (make-weak-key-hash-table))
   (define early (make-weak-key-hash-table))
   (define-syntax-rule (dispatch expr) (% expr run-dispatch))
@@ -136,8 +144,9 @@ the event loop, and then all the values that were passed to
                   (dispatch (proc)))))
 
 (define-public (notify-map reply-tags)
-  "Solicits all tags in the list REPLY-TAGS and returns a single tag
-that will be notified when all of the other tags have been notified."
+  "-- Scheme Procedure: notify-map reply-tags
+     Solicits all tags in the list REPLY-TAGS and returns a single tag
+     that will be notified when all of the other tags have been notified."
   (define not-ready (make-tag 'not-ready))
   (define replies
     (map (lambda (reply-tag) (cons reply-tag (make-parameter not-ready)))
