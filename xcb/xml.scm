@@ -1,3 +1,23 @@
+;; This file is part of Guile XCB.
+
+;;    Guile XCB is free software: you can redistribute it and/or modify
+;;    it under the terms of the GNU General Public License as published by
+;;    the Free Software Foundation, either version 3 of the License, or
+;;    (at your option) any later version.
+
+;;    Guile XCB is distributed in the hope that it will be useful,
+;;    but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;    GNU General Public License for more details.
+
+;;    You should have received a copy of the GNU General Public License
+;;    along with Guile XCB.  If not, see <http://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; This module exposes a public interface of support procedures for
+;; the Guile XCB implementation of the X protocol. 
+
 (define-module (xcb xml)
   #:use-module ((xcb xml connection)
                 #:select (xcb-connected?
@@ -43,7 +63,6 @@
                xenum-keys
                xenum-values
                enable-big-requests!
-               update-xid-range!
                document-full
                xcb-struct-fields
                set-on-xid-range-exhausted!
@@ -54,7 +73,7 @@
                current-xcb-connection
                xcb-connection-display
                xcb-connection-has-extension?
-               (typed-value-value . xid->integer)
+               xid->integer
                xunion-ref
                xcb-connection-setup
                xref

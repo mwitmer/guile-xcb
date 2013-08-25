@@ -95,14 +95,23 @@
 
 (define-public make-new-xid
   (case-lambda
+    "-- Scheme Procedure: make-new-xid [xcb-conn] xcb-type
+     Generate a new unique identifier for referring to a resource
+     maintained by the X server connected to XCB-CONN (or
+     `current-xcb-connection', if it is ommitted). X requests that
+     instruct the server to create, for example, new Windows or
+     Graphical Contexts require an XID for the new resource. XCB-TYPE
+     is an xid type such as `xwindow' or `xgc'."
     ((xcb-conn xcb-type) (make-typed-value (next-xid-value xcb-conn) xcb-type))
     ((xcb-type)
      (make-typed-value (next-xid-value (current-xcb-connection)) xcb-type))))
 
 (define-public (make-xid val xcb-type)
+  "-- Scheme Procedure: make-xid n xid-type
+     Create an XID with of type XID-TYPE with id number N."
   (make-typed-value val xcb-type))
 
-(define (xcb-event->vector/c xcb-conn event)
+(define (xcb-event->vector/c xcb-conn event)  
   (define rtd (record-type-descriptor event))
   (define event-type ((record-accessor rtd 'xcb-struct-type) event))
   (define raw (xcb-struct-pack-to-bytevector event))
@@ -113,11 +122,20 @@
 
 (define-public xcb-event->vector
   (case-lambda
+    "-- Scheme Procedure: xcb-event->vector [xcb-conn] event
+     Convert EVENT into a character vector for use in sending a
+     `send-event' request on connection XCB-CONN (or
+     `current-xcb-connection' if it is ommitted)."
     ((xcb-conn event) (xcb-event->vector/c xcb-conn event))
     ((event) (xcb-event->vector/c (current-xcb-connection) event))))
 
 (define-public enable-big-requests!
   (case-lambda
+    "-- Scheme Procedure: enable-big-requests! [xcb-conn] enable
+     Sets the request size limit for XCB-CONN, or
+     `current-xcb-connection' if it ommitted, to the value of
+     ENABLE's `maximum-request-length' field. ENABLE should be a
+     reply to the big request extension's `enable' request."
     ((xcb-conn enable-reply)
      (set-maximum-request-length!
       xcb-conn (xref enable-reply 'maximum-request-length)))
@@ -166,6 +184,9 @@ string ~a to type ~a" val type)))))
 
 (define-public xref
   (case-lambda
+    "-- Scheme Procedure: xref rec field | rec field n
+     Return the value of field FIELD in record REC. In the second form,
+     return the Nth value of list field FIELD in record REC."
     ((rec field)
      ((xcb-struct-accessor (xcb-struct-for-rec rec) field no-convert)
       rec))
@@ -175,6 +196,11 @@ string ~a to type ~a" val type)))))
 
 (define-public xref-string
   (case-lambda
+    "-- Scheme Procedure: xref-string rec field | rec field n
+     Returns the same value as xref, unless the field's type is
+     char[], xchar2b[], xbyte[], or void[], in which case it will
+     return the value converted to a Scheme string. The second form
+     of this procedure is identical to `xref'."
     ((rec field)
      ((xcb-struct-accessor (xcb-struct-for-rec rec) field xcb-convert-to-string)
       rec))
@@ -184,6 +210,9 @@ string ~a to type ~a" val type)))))
 
 (define-public xset!
   (case-lambda
+    "-- Scheme Procedure: xset! rec field val | rec field n val
+     Set the value of field FIELD in REC to VAL. In the second form,
+     set the Nth element of list field FIELD in REC to VAL."
     ((rec field val)
      ((xcb-struct-modifier
        (xcb-struct-for-rec rec) field xcb-convert-from-string)
@@ -194,9 +223,16 @@ string ~a to type ~a" val type)))))
       rec n val))))
 
 (define-public (xcb= val1 val2)
+  "-- Scheme Procedure: xcb= val1 val2
+     Check to see if VAR1 and VAL2 would be represented by the same
+     data when transferred to and from the X server.
+
+     XIDs, numbers, symbols, strings, and booleans can be compared
+     with this procedure."
   (cond
    ((typed-value? val1) (xid= val1 val2))
    ((number? val1) (= val1 val2))
    ((symbol? val1) (eq? val1 val2))
    ((string? val1) (string= val1 val2))
+   ((boolean? val1) (eq? val1 val2))
    (else (error "xml-xcb: Unable to compare values" val1 val2))))

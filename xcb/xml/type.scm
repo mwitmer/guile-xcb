@@ -37,6 +37,11 @@
 
 (define (safe-get-u8 bv) (if (eof-object? bv) 0 (get-u8 bv)))
 
+(define-public (xid->integer xid)
+  "-- Scheme Procedure: xid->integer xid
+     Return the raw integer value of XID."
+  (typed-value-value xid))
+
 (define-public (type-predicate predicate)
   (lambda (val)
     (predicate (typed-value-value val))))
@@ -243,6 +248,9 @@
 	 #f))))
 
 (define-public (xid= x1 x2)
+  "-- Scheme Procedure: xid= xid1 xid2
+     Returns `#t' if the integer value and type of XID1 and XID2 are
+     the same (`=' and `eq?', respectively)."
   (and
    (eq? (typed-value-type x1)
         (typed-value-type x2))

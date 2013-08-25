@@ -27,7 +27,6 @@
             xcb-connection?
             xcb-connection-buffer-port
             xcb-connection-socket
-            xcb-connection-has-extension?
             xcb-connection-use-extension!
             xcb-connection-display
             xcb-connection-string-converter
@@ -36,7 +35,6 @@
 	    make-xcb-connection
             poll-xcb-connection
             on-xid-range-exhausted
-            set-on-xid-range-exhausted!
             set-xcb-connection-setup!
             xcb-connection-setup
             get-maximum-request-length
@@ -74,7 +72,7 @@
   (original-maximum-request-length
    original-maximum-request-length set-original-maximum-request-length!)
   (maximum-request-length maximum-request-length set-maximum-request-length!)
-  (on-xid-range-exhausted on-xid-range-exhausted set-on-xid-range-exhausted!)
+  (on-xid-range-exhausted on-xid-range-exhausted set-on-xid-range-exhausted-inner!)
   (events all-events)
   (errors all-errors)
   (extensions xcb-connection-extensions)
@@ -82,6 +80,13 @@
   (display xcb-connection-display)
   (data xcb-connection-data set-xcb-connection-data!)
   (mutex xcb-connection-mutex))
+
+(define-public (set-on-xid-range-exhausted! xcb-conn on-exhausted)
+  "-- Scheme Variable: set-on-xid-range-exhausted! xcb-conn proc
+     Sets the xid range exhaustion procedure for XCB-CONN to
+     PROC, which will receive XCB-CONN as its argument, and must
+     return an instance of `get-xidrange-reply'."
+  (set-on-xid-range-exhausted-inner! xcb-conn on-exhausted))
 
 (set-record-type-printer!
  xcb-connection
@@ -106,13 +111,21 @@
    string-converter))
 
 (define-public (xcb-disconnect! xcb-conn)
+  "-- Scheme Procedure: xcb-disconnect! xcb-conn
+     Close the connection to the X server represented by XCB-CONN"
   (set-xcb-connection-setup! xcb-conn #f)
   (close-port (xcb-connection-socket xcb-conn)))
 
 (define-public (xcb-connected? xcb-conn)
+  "-- Scheme Procedure: xcb-connected? xcb-conn
+     Returns `#t' if the xcb-connection has successfully connected to
+     an X server and contains a setup value, otherwise returns `#f'"
   (if (xcb-connection-setup xcb-conn) #t #f))
 
-(define (xcb-connection-has-extension? xcb-conn extension)
+(define-public (xcb-connection-has-extension? xcb-conn extension)
+  "-- Scheme Procedure: xcb-connection-has-extension? xcb-conn ext-name
+     Return `#t' if extension EXT-NAME is enabled on connection
+     XCB-CONN."
   (hashq-ref (xcb-connection-extensions xcb-conn) extension))
 
 (define (xcb-connection-use-extension! xcb-conn extension)
@@ -212,6 +225,19 @@
   bv)
 
 (define* (poll-xcb-connection xcb-conn #:optional async?)
+  "-- Scheme Procedure: poll-xcb-connection xcb-conn [async?=`#f']
+     Receive the next reply, event, or error from the X server
+     connected to XCB-CONN. If ASYNC? is `#t', the procedure will
+     return the values `none' and `#f' if no data is immediately
+     available. Otherwise the procedure will block for a response.
+
+     When this procedure does receive data from the X server, it
+     returns two values--the first is a symbol (`reply', `error', or
+     `event') indicating what kind of data was received from the
+     server. The second value is a vector containing the data
+     received from the server. The vector can be referenced directly
+     or through the procedures `xcb-struct', `xcb-data', and
+     `xcb-sequence-number'."
   (define (unpack-event event-number bv)
     (define event-struct (hashv-ref (all-events xcb-conn) event-number))
     (define event-data
@@ -302,9 +328,26 @@
        (values data-type data)))
     (lambda () (unlock-mutex mutex))))
 
-(define-public (xcb-struct data) (vector-ref data 0))
-(define-public (xcb-data data) (vector-ref data 1))
-(define-public (xcb-sequence-number data) (vector-ref data 2))
+(define-public (xcb-struct data)
+  "-- Scheme Procedure: xcb-struct data
+     Returns the XCB struct (i.e. `key-press-event',
+     `query-extension-reply', etc.) for a piece of data sent by the X
+     server."
+  (vector-ref data 0))
+
+(define-public (xcb-data data)
+  "-- Scheme Procedure: xcb-data data
+     Returns the instance of an XCB struct for a piece of data sent
+     by the X server."
+  (vector-ref data 1))
+
+(define-public (xcb-sequence-number data)
+  "-- Scheme Procedure: xcb-sequence-number data
+     Returns the sequence number for a piece of data sent by the X
+     server. Note that this field is not present for events; if they
+     have a sequence number, it is included as one of the fields of
+     the XCB struct itself."
+  (vector-ref data 2))
 
 (define-public (xcb-connection-flush! xcb-conn)
   (define bv ((xcb-connection-get-bv xcb-conn)))

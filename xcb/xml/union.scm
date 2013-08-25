@@ -126,6 +126,9 @@
   (make-typed-value obj type))
 
 (define-public (xunion-ref rec field)
+  "-- Scheme Procedure: xunion-ref rec field
+     Return the data in xcb union instance REC represented as a
+     value conforming to the specification of FIELD."
   (define xcb-union ((record-accessor (record-type-descriptor rec) 'xcb-union-type) rec))
   (define type (hashq-ref (xcb-union-types xcb-union) field))
   (define port 

@@ -29,6 +29,11 @@
 (define* (xcb-connect!
           #:optional (display-name (getenv "DISPLAY"))
           (hostname (gethostname)))
+  "-- Scheme Procedure: xcb-connect! [display=(getenv \"DISPLAY\")]
+          [hostname=(gethostname)]
+     Connect to the X server running on DISPLAY and HOSTNAME. Returns
+     a record of type `xcb-connection', which is used for further
+     interaction with the X server."
   (define (xcb-get-auths)
     (define auth-file (open-file (getenv "XAUTHORITY") "rb"))
 

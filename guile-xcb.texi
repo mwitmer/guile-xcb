@@ -300,6 +300,19 @@ any do not. @xref{Types}. Some fields require that a value belong to a
 specific enum or mask; their values are specified with symbols rather
 than integer values. @xref{Enums and Masks}.
 
+On some occasions, it is useful to inspect the name and fields of an
+xcb struct.
+
+@deffn{Scheme Procedure} xcb-struct-name struct-type
+
+Returns the name of XCB struct type @var{struct-type}.
+@end deffn
+
+@deffn{Scheme Procedure} xcb-struct-fields struct-type
+
+Returns a list of all the fields in XCB struct type @var{struct-type}.
+
+@end deffn
 @node Types
 @section Types
 
@@ -384,6 +397,16 @@ conforming to the specification of @var{field}.
 @end deffn
 @end itemize
 
+@deffn {Scheme Procedure} xcb= val1 val2
+
+Check to see if @var{var1} and @var{val2} would be represented by the
+same data when transferred to and from the X server.
+
+XIDs, numbers, symbols, strings, and booleans can be compared with
+this procedure.
+
+@end deffn
+
 @node Enums and Masks
 @section Enums and Masks
 
@@ -418,6 +441,10 @@ the underlying numeric values in a enum with the procedure
 
 @deffn {Scheme Procedure} xenum-ref enum key
 Returns the numeric value stored in @var{enum} with key @var{key}.
+@end deffn
+
+@deffn {Scheme Procedure} xenum-key-ref enum val
+Returns the symbol stored in @var{enum} for value @var{val}.
 @end deffn
 
 For fields that are not explicitly marked as using a mask but

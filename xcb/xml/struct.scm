@@ -51,6 +51,8 @@
    #f))
 
 (define-public (xcb-struct-name xcb-struct)
+  "-- Scheme Procedure: xcb-struct-name struct-type
+     Returns the name of XCB struct type STRUCT-TYPE."
   (record-type-name (inner-type xcb-struct)))
 
 (define-public (xcb-struct-predicate xcb-struct)
@@ -462,6 +464,8 @@ key ~a" val key))))
    (list->vector (map-in-order unbox sorted))))
 
 (define-public (xcb-struct-fields struct-type)
+  "-- Scheme Procedure: xcb-struct-fields struct-type
+     Returns a list of all the fields in XCB struct type STRUCT-TYPE."
   (delq 'xcb-struct-type (record-type-fields (inner-type struct-type))))
 
 (define-public (xcb-struct-unpack-from-bytevector xcb-struct bv)

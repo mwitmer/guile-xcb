@@ -82,9 +82,20 @@
     (format #t "\nBrief: ~a\n\n" brief)))
 
 (define-public (document-brief package type . path)
+  "-- Scheme Procedure: document-brief header item-type item
+     Display brief documentation for an XCB element. Arguments are
+     the same as in `document-full'."
   (document package type print-documentation-brief path))
 
 (define-public (document-full package type . path)
+  "-- Scheme Procedure: document-full header item-type item
+     Display the full documentation for an XCB element NAME of type
+     ITEM-TYPE (`enum', `request', `reply', etc.). HEADER is an all
+     lower-case symbol identifying the extension to search for
+     documentation (`xproto', `bigreq', `glx', etc.). HEADER and
+     ITEM-TYPE are symbols and ITEM is the actual scheme object to
+     document (use the request procedure with ITEM-TYPE `reply' to
+     see documentation for the reply)."
   (document package type print-documentation path))
 
 (define (document package type proc path)
