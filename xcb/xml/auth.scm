@@ -35,19 +35,7 @@
      a record of type `xcb-connection', which is used for further
      interaction with the X server."
   (define (xcb-get-auths)
-    (define auth-file (open-file (getenv "XAUTHORITY") "rb"))
-
-    (define port
-      (make-custom-binary-input-port
-       "xcb-auth-input"
-       (lambda (bv start count)
-         (do ((n 0 (1+ n))
-              (ch (read-char auth-file) (read-char auth-file)))
-             ((or (>= n count) (eof-object? ch)) n)
-           (bytevector-u8-set!
-            bv (+ start n) (char->integer ch))))
-       #f #f (lambda () (close-port port))))
-
+    (define port (open-file (getenv "XAUTHORITY") "rb"))
     (define* (read-block)
       (define size
         (bytevector-u16-ref (get-bytevector-n port 2) 0 (endianness big)))
@@ -79,10 +67,11 @@
                 (protocol . ,protocol)
                 (data . ,data))))
           #f))
-
-    (let next-auth ((auths '()))
-      (define auth (read-auth))
-      (if auth (next-auth (cons auth auths)) auths)))
+    (let ((auths (let next-auth ((auths '()))
+                   (define auth (read-auth))
+                   (if auth (next-auth (cons auth auths)) auths))))
+      (close-port port)
+      auths))
 
   (define (parse-display-name disp)
     (define m (string-match ":([0-9]+).?([0-9]*)" disp))
@@ -113,13 +102,8 @@
             (xcb->string (xref response 'reason)))
     (error "xml-xcb: Additional authentication not supported at this time"))
 
-  (define (xcb-setup-unpack sock)
-    (define (read! bv start count)
-      (let* ((in-bv (make-bytevector count))
-             (bytes-read (recv! sock in-bv)))
-        (bytevector-copy! in-bv 0 bv start bytes-read)
-        bytes-read))
-    (define port (make-custom-binary-input-port "xcb-input" read! #f #f #f))
+  (define (xcb-setup-unpack port)
+
     (xcb-struct-unpack
      (case (lookahead-u8 port)
        ((0) setup-failed)
