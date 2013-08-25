@@ -13,7 +13,7 @@ AC_CONFIG_FILES([
         Makefile
 ])
 
-GUILE_PKG([2.2])
+GUILE_PKG([2.0 2.2])
 GUILE_SITE_DIR
 GUILE_PROGS
 AC_MSG_CHECKING(Guile lib directory)
