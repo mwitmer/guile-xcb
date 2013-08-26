@@ -47,7 +47,6 @@ nobase_go_DATA =                          \
   language/xml-xcb/compile-scheme.go      \
   language/xml-xcb/spec.go                \
   xcb/xml/xproto.go                       \
-  xcb/event-loop.go                       \
   xcb/xml/core.go                         \
   xcb/xml/ext-support.go                  \
   xcb/xml/ext/bigreq.go                   \
@@ -78,7 +77,8 @@ nobase_go_DATA =                          \
   xcb/xml/ext/xselinux.go                 \
   xcb/xml/ext/xtest.go                    \
   xcb/xml/ext/xv.go                       \
-  xcb/xml/ext/xvmc.go
+  xcb/xml/ext/xvmc.go                     \
+  xcb/event-loop.go
 
 nobase_dist_data_DATA =                   \
   flow/event-loop.scm                     \
@@ -97,7 +97,6 @@ nobase_dist_data_DATA =                   \
   xcb/xml/connection.scm                  \
   language/xml-xcb/compile-scheme.scm     \
   language/xml-xcb/spec.scm               \
-  xcb/event-loop.scm                      \
   xcb/xml/xproto.xml                      \
   xcb/xml/core.scm                        \
   xcb/xml/ext-support.scm                 \
@@ -129,4 +128,5 @@ nobase_dist_data_DATA =                   \
   xcb/xml/ext/xselinux.xml                \
   xcb/xml/ext/xtest.xml                   \
   xcb/xml/ext/xv.xml                      \
-  xcb/xml/ext/xvmc.xml
+  xcb/xml/ext/xvmc.xml                    \
+  xcb/event-loop.scm
