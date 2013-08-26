@@ -137,8 +137,8 @@
        byte-order
        protocol-major-version
        protocol-minor-version
-       (string->xcb (assq-ref auth 'protocol))
-       (bv->xcb-string (assq-ref auth 'data))))
+       (string->xcb (or (assq-ref auth 'protocol) ""))
+       (bv->xcb-string (or (assq-ref auth 'data) #vu8()))))
 
     (xcb-enable-xproto!/c xcb-conn #f)
 
