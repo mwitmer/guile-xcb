@@ -131,7 +131,7 @@ handler."
   (define (run-dispatch cont key)
     (hashq-set! conts key cont)
     (let get-result ((result (dispatch (dispatcher))))
-      (while (not (q-empty? post-q)) (dispatch ((q-pop! post-q))))
+      (while (not (q-empty? post-q)) ((lambda () (dispatch ((q-pop! post-q))))))
       (cond
        ((eq? key tick-tag) (dispatch (notify tick-tag result)))
        ((eq? cont (hashq-ref conts key)) (get-result (dispatch (dispatcher))))
