@@ -252,8 +252,8 @@
      Returns `#t' if the integer value and type of XID1 and XID2 are
      the same (`=' and `eq?', respectively)."
   (and
-   (eq? (typed-value-type x1)
-        (typed-value-type x2))
+   (eq? (xcb-type-predicate (typed-value-type x1))
+        (xcb-type-predicate (typed-value-type x2)))
    (= (typed-value-value x1)
       (typed-value-value x2))))
 
