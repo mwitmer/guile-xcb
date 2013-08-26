@@ -1076,11 +1076,17 @@ The following syntax is useful for creating a set of related,
 self-contained, and self-managing event listeners:
 
 @deffn{Scheme Syntax} create-listener (stop! reset! reset-expr ...) ((event-struct event #:field value ...) body body* ...) ...
+@deffnx{Scheme Syntax} create-listener (stop! reset! reset-expr ...) ((event-struct #:field value ...) => proc) ...
 
 Adds a set of event listeners to the current xcb connection. Each
 @var{event-struct} is an XCB struct type for an event and @var{event}
 is bound to the event within the accompanying expressions @var{body
 body* ...}.
+
+Alternatively, @var{event} may be ommitted and the @var{body}
+expressions replaced with @code{=> @var{proc}}, with @var{proc} begin
+a one-argument procedure that the event will be passed to. A single
+@code{create-listener} expression may have a mix of the two forms.
 
 @var{#:field} is a keyword for a field of the event struct
 (eg. #:window, #:event, #:count, etc.), and @var{value} is the
@@ -1107,9 +1113,9 @@ This is shortened syntax for cases where @var{reset!} is not needed in
 
 @deffn{Scheme Syntax} create-tagged-listener tag ...
 
-Identitical to @code{create-listener}, but requires an
-additional argument @var{tag}, which will is used as the tag argument
-in @code{listen!}/@code{unlisten!}.
+Identitical to @code{create-listener} besides requiring an additional
+argument @var{tag}, which is used as the tag argument in
+@code{listen!}/@code{unlisten!}.
 
 Use @code{create-tagged-listener} if newly created listeners are meant
 to replace pre-existing ones with the same tag.

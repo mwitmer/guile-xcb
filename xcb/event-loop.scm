@@ -283,7 +283,13 @@
           (if (xcb= val1 val2) (verify (cddr plist)) #f)))))
 
 (define-syntax make-listener  
-  (syntax-rules ()
+  (syntax-rules (=>)
+    ((_ event-struct tag extraguard ... (guard guard* ...) => proc)
+     (listen! event-struct tag
+              proc
+              (lambda (name) (verify-fields name extraguard ... guard guard* ...))))
+    ((_ event-struct tag extraguard ... () => proc)
+     (listen! event-struct tag proc))
     ((_ event-struct tag name (guard guard* ...) expr expr* ...)
      (listen! event-struct tag
               (lambda (name) expr expr* ...)
@@ -295,10 +301,17 @@
   (syntax-rules ()
     "-- Scheme Syntax: create-listener (stop! reset! reset-expr ...)
           ((event-struct event #:field value ...) body body* ...) ...
+ -- Scheme Syntax: create-listener (stop! reset! reset-expr ...)
+          ((event-struct #:field value ...) => proc) ...
      Adds a set of event listeners to the current xcb connection. Each
      EVENT-STRUCT is an XCB struct type for an event and EVENT is
      bound to the event within the accompanying expressions BODY
      BODY* ....
+
+     Alternatively, EVENT may be ommitted and the BODY expressions
+     replaced with `=> PROC', with PROC begin a one-argument
+     procedure that the event will be passed to. A single
+     `create-listener' expression may have a mix of the two forms.
 
      #:FIELD is a keyword for a field of the event struct (eg.
      #:window, #:event, #:count, etc.), and VALUE is the required
@@ -327,10 +340,10 @@
 
 (define-syntax create-tagged-listener  
   (syntax-rules ()
-    "-- Scheme Syntax: create-listener tag ...
-     Identitical to `create-tagged-listener', but requires an
-     additional argument TAG, which will is used as the tag argument
-     in `listen!'/`unlisten!'.
+    "-- Scheme Syntax: create-tagged-listener tag ...
+     Identitical to `create-listener' besides requiring an additional
+     argument TAG, which is used as the tag argument in
+     `listen!'/`unlisten!'.
 
      Use `create-tagged-listener' if newly created listeners are meant
      to replace pre-existing ones with the same tag."
