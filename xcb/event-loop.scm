@@ -31,6 +31,7 @@
   #:use-module (flow event-loop)
   #:export (with-replies create-listener
                with-connection loop-with-connection
+               screen-info
                create-tagged-listener
                event-loop-prepare!)
   #:re-export (solicit notify make-tag post-to-event-loop notify-map unsolicit))
@@ -284,10 +285,10 @@
 
 (define-syntax make-listener  
   (syntax-rules (=>)
-    ((_ event-struct tag extraguard ... (guard guard* ...) => proc)
+    ((_ event-struct tag extraguard ... (guard ...) => proc)
      (listen! event-struct tag
               proc
-              (lambda (name) (verify-fields name extraguard ... guard guard* ...))))
+              (lambda (name) (verify-fields name extraguard ... guard ...))))
     ((_ event-struct tag extraguard ... () => proc)
      (listen! event-struct tag proc))
     ((_ event-struct tag name (guard guard* ...) expr expr* ...)
