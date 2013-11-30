@@ -534,8 +534,7 @@ key ~a" val key))))
     (define (pack-with-match key-val)
       ((pack-field xcb-struct rec port alist) default))
     (or (and=> (assq (car default) alist) pack-with-match) #f
-        ;(error "xml-xcb: No default value provided for switch")
-        ))
+        (error "xml-xcb: No default value provided for switch")))
   (define (case-expression-accum ce fields)
     (append (case-expression-pack ce) fields))
   (define pack-results
