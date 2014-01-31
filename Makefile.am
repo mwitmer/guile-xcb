@@ -28,12 +28,11 @@ ACLOCAL_AMFLAGS = -I ./m4
 %.go : %.scm
 	GUILE_FLAGS="-C ${CURDIR}" @GUILE_TOOLS@ compile $< --output=$@
 
-SCM_SITE_CCACHE_DIR = $(GUILE_LIB_DIR)/guile/$(GUILE_EFFECTIVE_VERSION)/site-ccache
 CLEANFILES = xcb/xml/ext/*.go xcb/xml/*.go language/xml-xcb/*.go flow/*.go xcb/*.go
 
 info_TEXINFOS = guile-xcb.texi
 
-godir = $(SCM_SITE_CCACHE_DIR)
+godir = $(guilesiteccachedir)
 nobase_go_DATA =                          \
   flow/event-loop.go                      \
   xcb/xml/records.go                      \
@@ -80,7 +79,8 @@ nobase_go_DATA =                          \
   xcb/xml/ext/xvmc.go                     \
   xcb/event-loop.go
 
-nobase_dist_data_DATA =                   \
+scmdir = $(guilesitedir)
+nobase_dist_scm_DATA =                    \
   flow/event-loop.scm                     \
   xcb/xml/records.scm                     \
   xcb/xml/enum.scm                        \
