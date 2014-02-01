@@ -330,8 +330,9 @@
      The macro returns STOP! and RESET! as two values."
     ((_ (stop! reset! reset-expr ...)
         ((event-struct name guard ...) body body* ...) ...)
-     (create-tagged-listener (make-tag 'listener) (stop! reset! reset-expr ...)
-       ((event-struct name guard ...) body body* ...) ...))
+     (let ((tag (make-tag `listener)))
+      (create-tagged-listener tag (stop! reset! reset-expr ...)
+        ((event-struct name guard ...) body body* ...) ...)))
     ((_ (stop!) ((event-struct name guard ...) body body* ...) ...)
      (create-listener
          (stop! reset!) ((event-struct name guard ...) body body* ...) ...))
