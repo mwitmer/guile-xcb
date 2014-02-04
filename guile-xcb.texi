@@ -5,7 +5,7 @@
 @c %**end of header
 
 @copying
-This manual is for Guile XCB, version 1.0.
+This manual is for Guile XCB, version 1.3.
 
 Copyright @copyright{} 2013 Mark Witmer.
 
@@ -44,7 +44,7 @@ Documentation License."
 @node Top
 @top Guile XCB
 
-This manual is for Guile XCB, version 1.0.
+This manual is for Guile XCB, version 1.3.
 
    Permission is granted to copy, distribute and/or modify this document
 under the terms of the GNU Free Documentation License, Version 1.3 or

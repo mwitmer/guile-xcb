@@ -26,3 +26,14 @@
 	events to the right format for send-event requests
 
 	* Bug fixes, updates test cases, updated manual, and more.
+
+2014-01-31 Song Wenwu <iyzsong@gmail.com>
+
+	* configure.ac: Add guilesitedir and guilesiteccachedir options
+	* Makefile.am: Install files in configurable directories
+
+2014-02-01 Mark Witmer <mark@markwitmer.com>
+
+	* xcb/event-loop.scm: Fixed bug in create-listener where what was
+	supposed to be one automatically generated tag was being generated
+	multiple times

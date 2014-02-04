@@ -1,6 +1,9 @@
 Guile XCB:
         Copyright (c) 2013 Mark Witmer (mark@markwitmer.com)
 
+        Song Wenwu (iyzsong@gmail.com) contributed a patch to make the
+        installation paths configurable
+
 XML-XCB:
         XML-XCB was written by various authors; consult the invidiual XML-XCB
         files included with this package for more info.
