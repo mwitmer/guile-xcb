@@ -35,7 +35,9 @@
      a record of type `xcb-connection', which is used for further
      interaction with the X server."
   (define (xcb-get-auths)
-    (define port (open-file (getenv "XAUTHORITY") "rb"))
+    (define port (open-file (or (getenv "XAUTHORITY")
+                                (format #f "~a/.Xauthority" (getenv "HOME")))
+                            "rb"))
     (define* (read-block)
       (define size
         (bytevector-u16-ref (get-bytevector-n port 2) 0 (endianness big)))
