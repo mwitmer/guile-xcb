@@ -21,7 +21,7 @@
   #:use-module (xcb xml type)
   #:use-module (xcb xml enum)
   #:use-module (xcb xml xproto)
-  #:use-module ((xcb xml records) 
+  #:use-module ((xcb xml records)
                 #:select (xcb-type-name xcb-type-list? make-typed-value typed-value?))
   #:use-module (xcb xml struct))
 
@@ -101,7 +101,7 @@
      `current-xcb-connection', if it is ommitted). X requests that
      instruct the server to create, for example, new Windows or
      Graphical Contexts require an XID for the new resource. XCB-TYPE
-     is an xid type such as `xwindow' or `xgc'."
+     is an xid type such as `xwindow' or `xgcontext'."
     ((xcb-conn xcb-type) (make-typed-value (next-xid-value xcb-conn) xcb-type))
     ((xcb-type)
      (make-typed-value (next-xid-value (current-xcb-connection)) xcb-type))))
