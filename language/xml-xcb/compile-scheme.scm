@@ -65,11 +65,6 @@
       (error "xml-xcb: invalid expression"
 	     (with-output-to-string (lambda () (sxml->xml exp))))))
 
-;; (partition-elements fields
-;; 			     '((field pad list) 0 #f)
-;; 			     '(pad 0 #f)
-;; 			     '(list 0 #f))
-
 (define (partition-elements elements . groups)
   (define result-list
     (let partition-element ((inner-elements elements) (inner-groups groups))
