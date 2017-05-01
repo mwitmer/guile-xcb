@@ -65,34 +65,39 @@
       (error "xml-xcb: invalid expression"
 	     (with-output-to-string (lambda () (sxml->xml exp))))))
 
+;; (partition-elements fields
+;; 			     '((field pad list) 0 #f)
+;; 			     '(pad 0 #f)
+;; 			     '(list 0 #f))
+
 (define (partition-elements elements . groups)
-  (let ((result-list
-	 (let partition-element ((inner-elements elements) (inner-groups groups))
-	   (if (null? inner-groups)
-	       (if (> (length inner-elements) 0)
-                   (error (format #f "xml-xcb: Unmatched tags ~a element list ~a"
-                                  inner-elements
-                                  elements))
-		   '())
-	       (receive (matches rest)
-		   (partition
-		    (lambda (element)
-		      (let ((syntax-tag-names (caar inner-groups)))
-			(if (list? syntax-tag-names)
-			    (find (lambda (el) (eq? el (element-syntax-tag element)))
-				  syntax-tag-names)
-			    (eq? (element-syntax-tag element) syntax-tag-names))))
-		    inner-elements)
-		 (if (and (cadar inner-groups)
-			  (< (length matches) (cadar inner-groups)))
-		     (error (format #f "Too few instances of ~a in element list ~a"
-				    (caar inner-groups) elements)))
-		 (if (and (caddar inner-groups)
-			  (> (length matches) (caddar inner-groups)))
-		     (error (format #f "Too many instances of ~a in element list ~a"
-				    (caar inner-groups) elements)))
-		 (cons matches (partition-element rest (cdr inner-groups))))))))
-    (apply values result-list)))
+  (define result-list
+    (let partition-element ((inner-elements elements) (inner-groups groups))
+      (if (null? inner-groups)
+          (if (> (length inner-elements) 0)
+              (error (format #f "xml-xcb: Unmatched tags ~a element list ~a"
+                             inner-elements
+                             elements))
+              '())
+          (receive (matches rest)
+              (partition
+               (lambda (element)
+                 (let ((syntax-tag-names (caar inner-groups)))
+                   (if (list? syntax-tag-names)
+                       (find (lambda (el) (eq? el (element-syntax-tag element)))
+                             syntax-tag-names)
+                       (eq? (element-syntax-tag element) syntax-tag-names))))
+               inner-elements)
+            (if (and (cadar inner-groups)
+                     (< (length matches) (cadar inner-groups)))
+                (error (format #f "Too few instances of ~a in element list ~a"
+                               (caar inner-groups) elements)))
+            (if (and (caddar inner-groups)
+                     (> (length matches) (caddar inner-groups)))
+                (error (format #f "Too many instances of ~a in element list ~a"
+                               (caar inner-groups) elements)))
+            (cons matches (partition-element rest (cdr inner-groups)))))))
+  (apply values result-list))
 
 
 (define (proc-for-op op)
@@ -710,11 +715,7 @@
      (guard
       (string? name)
       (xml-integer? number))
-     (receive (field)
-	 (partition-elements fields
-			     '((field pad list) 0 #f)
-			     '(pad 0 #f)
-			     '(list 0 #f))
+     (receive (field) (partition-elements fields '((field pad list) 0 #f))
        (make-element-syntax
 	'error
 	(let ((error-struct-name (make-error-name name)))

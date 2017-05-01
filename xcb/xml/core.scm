@@ -143,7 +143,7 @@
      (set-maximum-request-length!
       (current-xcb-connection) (xref enable-reply 'maximum-request-length)))))
 
-(define (update-xid-range! xcb-conn range)
+(define-public (update-xid-range! xcb-conn range)
   (let* ((xid-count (xref range 'count))
          (xid-start (xref range 'start-id))
          (setup (xcb-connection-setup xcb-conn))
