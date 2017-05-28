@@ -26,56 +26,51 @@
   #:use-module (xcb xml connection)
   #:export (xcb-connect!))
 
-(define* (xcb-connect!
-          #:optional (display-name (getenv "DISPLAY"))
-          (hostname (gethostname)))
-  "-- Scheme Procedure: xcb-connect! [display=(getenv \"DISPLAY\")]
-          [hostname=(gethostname)]
-     Connect to the X server running on DISPLAY and HOSTNAME. Returns
-     a record of type `xcb-connection', which is used for further
-     interaction with the X server."
-  (define (xcb-get-auths)
-    (define port (open-file (or (getenv "XAUTHORITY")
-                                (format #f "~a/.Xauthority" (getenv "HOME")))
-                            "rb"))
-    (define* (read-block)
-      (define size
-        (bytevector-u16-ref (get-bytevector-n port 2) 0 (endianness big)))
+(define (xcb-get-auths)
+  (define port (open-file (or (getenv "XAUTHORITY")
+                              (format #f "~a/.Xauthority" (getenv "HOME")))
+                          "rb"))
+  (define* (read-block)
+    (define size
+      (bytevector-u16-ref (get-bytevector-n port 2) 0 (endianness big)))
 
-      (define value (get-bytevector-n port size))
-      value)
+    (define value (get-bytevector-n port size))
+    value)
 
-    (define (auth-short bv)
-      (+ (* (bytevector-u8-ref bv 0) 256)
-         (bytevector-u8-ref bv 1)))
+  (define (auth-short bv)
+    (+ (* (bytevector-u8-ref bv 0) 256)
+       (bytevector-u8-ref bv 1)))
 
-    (define (read-auth)
-      (define entry-type
-       (case (get-u8 port)
-         ((0) 'ip)
-         ((1) 'hostname)
-         (else 'eof)))
+  (define (read-auth)
+    (define entry-type
+      (case (get-u8 port)
+        ((0) 'ip)
+        ((1) 'hostname)
+        (else 'eof)))
 
-      (if (not (eq? entry-type 'eof))
-          (begin
-            (get-u8 port)
-            (let* ((address (read-block))
-                   (display (utf8->string (read-block)))
-                   (protocol (utf8->string (read-block)))
-                   (data (read-block)))
-              `((display . ,display)
-                (entry-type . ,entry-type)
-                (address . ,(if (eq? entry-type 'ip) address (utf8->string address)))
-                (protocol . ,protocol)
-                (data . ,data))))
-          #f))
-    (let ((auths (let next-auth ((auths '()))
-                   (define auth (read-auth))
-                   (if auth (next-auth (cons auth auths)) auths))))
-      (close-port port)
-      auths))
+    (if (not (eq? entry-type 'eof))
+        (begin
+          (get-u8 port)
+          (let* ((address (read-block))
+                 (display (utf8->string (read-block)))
+                 (protocol (utf8->string (read-block)))
+                 (data (read-block)))
+            `((display . ,display)
+              (entry-type . ,entry-type)
+              (address . ,(if (eq? entry-type 'ip) address (utf8->string address)))
+              (protocol . ,protocol)
+              (data . ,data))))
+        #f))
 
-  (define (parse-display-name disp)
+  (dynamic-wind
+    (lambda () #t)
+    (lambda ()
+      (let lp ((auths '()))
+        (define auth (read-auth))
+        (if auth (lp (cons auth auths)) auths)))
+    (lambda () (close-port port))))
+
+(define (parse-display-name disp)
     (define m (string-match ":([0-9]+).?([0-9]*)" disp))
     `((display . ,(match:substring m 1))
       (screen . ,(match:substring m 2))))
@@ -85,14 +80,19 @@
      (assq-ref (parse-display-name display-string) 'display)
      xauth-display))
 
-  (define (xcb-match-auth auths display-name hostname)
-    (find (lambda (auth)
-            (and
-             (if (eq? 'hostname (assq-ref auth 'entry-type))
-                 (string= (assq-ref auth 'address) hostname)
-                 (equal? (assq-ref auth 'address) hostname))
-             (display-match? (assq-ref auth 'display) display-name)))
-          auths))
+(define (xcb-match-auth auths display-name hostname)
+  (define (auth-match? auth)
+    (and
+     (if (eq? 'hostname (assq-ref auth 'entry-type))
+         (string= (assq-ref auth 'address) hostname)
+         (equal? (assq-ref auth 'address) hostname))
+     (display-match? (assq-ref auth 'display) display-name)))
+  (let lp ((matches '()) (auths auths))
+    (cond
+     ((null? auths) matches)
+     ((auth-match? (car auths))
+      (lp (cons (car auths) matches) (cdr auths)))
+     (else (lp matches (cdr auths))))))
 
   (define protocol-major-version 11)
   (define protocol-minor-version 0)
@@ -113,12 +113,21 @@
        ((2) setup-authenticate))
      port))
 
+(define* (xcb-connect!
+          #:optional (display-name (getenv "DISPLAY"))
+          (hostname (gethostname)))
+  "-- Scheme Procedure: xcb-connect! [display=(getenv \"DISPLAY\")]
+          [hostname=(gethostname)]
+     Connect to the X server running on DISPLAY and HOSTNAME. Returns
+     a record of type `xcb-connection', which is used for further
+     interaction with the X server."
+
   (define byte-order
     (case (native-endianness)
       ((little) (char->integer #\l))
       ((big) (char->integer #\B))
       (else (error "xml-xcb: Unrecognized byte order." (native-endianness)))))
-
+  
   (define sock (socket AF_UNIX SOCK_STREAM 0))
 
   (connect sock AF_UNIX
@@ -126,37 +135,41 @@
             xbase
             (assq-ref (parse-display-name display-name) 'display)))
 
-  (let ((auth (xcb-match-auth (xcb-get-auths) display-name hostname)))
-    (define xcb-conn
-      (receive (buffer get-buffer-bv)
-          (open-bytevector-output-port)
-        (make-xcb-connection
-         buffer get-buffer-bv sock (make-hash-table) display-name
-         xcb-convert-from-string)))
+  (let ((auths (xcb-match-auth (xcb-get-auths) display-name hostname)))
+    (if (null? auths) (error "Could not find any X authentication \
+token for ~a ~a" display-name hostname))
+    (let lp ((auth (car auths)) (auths (cdr auths)))
+      (define xcb-conn
+        (receive (buffer get-buffer-bv)
+            (open-bytevector-output-port)
+          (make-xcb-connection
+           buffer get-buffer-bv sock (make-hash-table) display-name
+           xcb-convert-from-string)))
 
-    (define my-setup-request
-      (make-setup-request
-       byte-order
-       protocol-major-version
-       protocol-minor-version
-       (string->xcb (or (assq-ref auth 'protocol) ""))
-       (bv->xcb-string (or (assq-ref auth 'data) #vu8()))))
+      (define my-setup-request
+        (make-setup-request
+         byte-order
+         protocol-major-version
+         protocol-minor-version
+         (string->xcb (or (assq-ref auth 'protocol) ""))
+         (bv->xcb-string (or (assq-ref auth 'data) #vu8()))))
 
-    (xcb-enable-xproto!/c xcb-conn #f)
+      (xcb-enable-xproto!/c xcb-conn #f)
 
-    (xcb-struct-pack my-setup-request (xcb-connection-buffer-port xcb-conn))
-    (xcb-connection-flush! xcb-conn)
+      (xcb-struct-pack my-setup-request (xcb-connection-buffer-port xcb-conn))
+      (xcb-connection-flush! xcb-conn)
 
-    (let ((reply (xcb-setup-unpack (xcb-connection-socket xcb-conn))))
-      (cond
-       ((setup? reply)
-        (set-xcb-connection-setup! xcb-conn reply)
-        (let ((max-length (xref reply 'maximum-request-length)))
-          (set-original-maximum-request-length! xcb-conn max-length)
-          (set-maximum-request-length! xcb-conn max-length))
-        xcb-conn)
-       ((setup-failed? reply)
-        (display (xcb->string (xref reply 'reason)))
-        #f)
-       ((setup-authenticate? reply)
-        (display "Further authentication required, but not supported."))))))
+      (let ((reply (xcb-setup-unpack (xcb-connection-socket xcb-conn))))
+        (cond
+         ((setup? reply)
+          (set-xcb-connection-setup! xcb-conn reply)
+          (let ((max-length (xref reply 'maximum-request-length)))
+            (set-original-maximum-request-length! xcb-conn max-length)
+            (set-maximum-request-length! xcb-conn max-length))
+          xcb-conn)
+         ((setup-failed? reply)
+          (format #t "Failed to connect to X server: ~a\n"
+                  (xcb->string (xref reply 'reason)))
+          (if (null? auths) #f (lp (car auths) (cdr auths))))
+         ((setup-authenticate? reply)
+          (display "Further authentication required, but not supported.")))))))
