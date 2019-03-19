@@ -75,10 +75,11 @@
     `((display . ,(match:substring m 1))
       (screen . ,(match:substring m 2))))
 
-  (define (display-match? xauth-display display-string)
-    (string=
-     (assq-ref (parse-display-name display-string) 'display)
-     xauth-display))
+(define (display-match? xauth-display display-string)
+  (or (string=
+       (assq-ref (parse-display-name display-string) 'display)
+       xauth-display)
+      (string-null? display-string)))
 
 (define (xcb-match-auth auths display-name hostname)
   (define (auth-match? auth)
