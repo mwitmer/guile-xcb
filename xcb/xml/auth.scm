@@ -79,7 +79,7 @@
   (or (string=
        (assq-ref (parse-display-name display-string) 'display)
        xauth-display)
-      (string-null? display-string)))
+      (string-null? xauth-display)))
 
 (define (xcb-match-auth auths display-name hostname)
   (define (auth-match? auth)
